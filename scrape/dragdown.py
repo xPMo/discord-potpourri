@@ -54,21 +54,22 @@ class Character:
         self._skins = {}
         header = soup.find('span', {'id': 'Cosmetics'}).parent
         for obj in header.next_siblings:
-            match obj.name:
-                case header.name:
-                    break
-                case 'h2' | 'h3' | 'h4':
-                    skin = obj.get_text(strip=True)
-                case 'table':
-                    palettes = {}
-                    names, links, unlocks, *_ = obj.find_all('tr')
-                    for n, l, u in zip(names.find_all('th'), links.find_all('td'), unlocks.find_all('td')):
-                        palettes[n.get_text(strip=True)] = (
-                                l.a.get('href'),
-                                l.img.get('src'),
-                                u.get_text(strip=True)
-                        )
-                    self._skins[skin] = palettes
+            if obj.name == header.name:
+                break
+            for obj in obj.find_all(['h2', 'h3', 'h4', 'table']):
+                match obj.name:
+                    case 'h2' | 'h3' | 'h4':
+                        skin = obj.get_text(strip=True)
+                    case 'table':
+                        palettes = {}
+                        names, links, unlocks, *_ = obj.find_all('tr')
+                        for n, l, u in zip(names.find_all('th'), links.find_all('td'), unlocks.find_all('td')):
+                            palettes[n.get_text(strip=True)] = (
+                                    l.a.get('href'),
+                                    l.img.get('src'),
+                                    u.get_text(strip=True)
+                            )
+                        self._skins[skin] = palettes
         return self._skins
 
     def get_palette(self, skin, palette='Default'):
@@ -85,5 +86,5 @@ def characterlist(wiki=Wiki()):
 
 if __name__ == '__main__':
     with Wiki() as wiki:
-        char = Character(wiki, 'ROA2/Loxodont')
-        print(char.soup)
+        char = Character(wiki, 'RoA2/Loxodont')
+        print(char.skins['Default']['Default'])

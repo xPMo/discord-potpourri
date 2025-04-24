@@ -32,14 +32,14 @@ class Completions:
 characters = scrape.dragdown.characterlist()
 completions = Completions(characters)
 
-class Cog(commands.Cog):
+class Cog(discord.Cog):
 
     def __init__(self, bot, characters):
         logging.debug("Loading Rivals 2 Cog")
         self.bot = bot
 
-    @commands.slash_command(name='resetcharacters', description='Reload all data for Rivals 2 characters')
-    async def resetcharacters(self, ctx):
+    @discord.slash_command(name='resetc', description='Reload all data for Rivals 2 characters')
+    async def resetc(self, ctx):
         logging.debug(f'{ctx.command}: {ctx.user}')
         logging.debug(f'{ctx.command}: {ctx.guild} ({ctx.guild_id}) {ctx.channel} ({ctx.channel_id})')
 
@@ -47,7 +47,7 @@ class Cog(commands.Cog):
         characters.update(new)
         await ctx.respond('Reset!')
 
-    @commands.slash_command(name='palette', description='Get a Rivals 2 palette')
+    @discord.slash_command(name='palette', description='Get a Rivals 2 palette')
     @option('character', description='Rivals 2 Character',
             autocomplete=discord.utils.basic_autocomplete(characters.keys())
     )
