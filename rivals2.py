@@ -28,7 +28,6 @@ class Completions:
         except:
             return []
 
-
 # have to create completions object first
 characters = scrape.dragdown.characterlist()
 completions = Completions(characters)
@@ -62,11 +61,11 @@ class Cog(commands.Cog):
         logging.debug(f'{ctx.command}: {ctx.user}')
         logging.debug(f'{ctx.command}: {ctx.guild} ({ctx.guild_id}) {ctx.channel} ({ctx.channel_id})')
         try:
-            full, thumb, unlock = characters[character].skins[skin][palette]
-            embed = discord.Embed(title=f'{skin} {character} ({palette})')
-            embed.url = scrape.dragdown.DOMAIN + full
-            embed.set_image(url='https:' + thumb)
-            embed.set_footer(text=unlock)
+            c = characters[character]
+            image, thumb, unlock_text = c.get_palette(skin, palette=palette)
+            embed = discord.Embed(title=f'{skin} {character} ({palette})', url=image)
+            embed.set_image(url=thumb)
+            embed.set_footer(text=unlock_text)
             await ctx.respond(None, embed=embed)
         except KeyError as e:
             logging.info(f'{ctx.command}: No {character}/{skin}/{palette}', exc_info=e)
