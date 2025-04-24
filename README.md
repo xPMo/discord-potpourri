@@ -12,4 +12,4 @@ pip install -U -r requirements.txt
 ## Commands
 
 - `/ping`: Respond with "Pong!" and the bot's latency.
-- `/pallete`: Get the requested palette for a Rivals 2 character skin
+- `/palette`: Get the requested palette for a Rivals 2 character skin
