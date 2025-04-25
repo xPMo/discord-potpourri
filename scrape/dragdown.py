@@ -1,5 +1,6 @@
 #!python
 import re
+import itertools
 import requests
 import mwparserfromhell as mw
 from bs4 import BeautifulSoup
@@ -17,6 +18,51 @@ class Wiki:
 
     def fetch(self, path):
         return self.session.get(self.baseurl + path, params={'action': 'raw'}).content.decode()
+
+def table_by_columns(node):
+    ret = {}
+    headings = node.contents.ifilter_tags(matches=lambda node: node.tag == 'th')
+    rows = node.contents.ifilter_tags(matches=lambda node: node.tag == 'tr')
+    return itertools.zip_longest(headings, *[row.contents.nodes for row in rows])
+
+class Skin(dict):
+    def __init__(self, *args, description=None, **kwargs):
+        self.description = description
+        super().__init__(*args, **kwargs)
+
+class SkinPalette:
+    def __init__(self, wiki, name, image, unlock):
+        self.wiki = wiki
+        match name:
+            case None:
+                self.name = ''
+            case mw.nodes.Tag:
+                self.name = name.contents.strip()
+            case _:
+                self.name = name.strip()
+        match image:
+            case None:
+                self.images = []
+            case mw.nodes.Wikilink:
+                self.images = [image]
+            case _:
+                self.images = image.contents.filter_wikilinks()
+        match unlock:
+            case None:
+                self.unlock = ''
+            case mw.nodes.Tag:
+                self.unlock = unlock.contents.strip()
+            case _:
+                self.unlock = unlock.strip()
+
+    # note: add GET parameter 'width=200' to get a ~200px wide thumbnail
+    def imageurl(self):
+        return [self.wiki.baseurl + 'Special:Redirect/file/' + link.title.removeprefix('File:')
+                for link in self.images]
+
+    def __repr__(self):
+        return 'SkinPalette({!r}, {!r}, {!r}, {!r})'.format(
+                self.wiki, self.name, self.images, self.unlock)
 
 class Character:
 
@@ -73,6 +119,29 @@ class Character:
         self._soup = BeautifulSoup(request.content, features='html.parser')
         return self._soup
 
+    def skins_mw(self):
+        page = mw.parse(self.page)
+        head = next(page.ifilter_headings(matches=lambda node: node.title.strip() == 'Cosmetics'))
+        table = {}
+        for node in page.nodes[page.index(head) + 1:]:
+            match type(node):
+                case mw.nodes.heading.Heading:
+                    if node.level == head.level:
+                        break
+                    skin = node.title.strip()
+                    description = None
+                case str() | mw.nodes.Text:
+                    node = node.strip()
+                    if node:
+                        description = node
+                case mw.nodes.Tag:
+                    if node.tag == 'table':
+                        palettes = (SkinPalette(self.wiki, *col) for col in table_by_columns(node))
+                        table[skin] = Skin({palette.name: palette for palette in palettes},
+                                        description=description)
+        return table
+
+
     @property
     def skins(self):
         #TODO: extract this from self.page
@@ -115,8 +184,7 @@ def characterlist(wiki=Wiki()):
 if __name__ == '__main__':
     import json
     with Wiki() as wiki:
-        text = wiki.fetch('Project:ROA2_Character_Select')
         char = Character(wiki, 'RoA2/Loxodont')
+        char.page
         print(len(char.framedata))
-        print(json.dumps(char.framedata, indent=2))
 
