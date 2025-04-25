@@ -57,6 +57,8 @@ class Character:
         data = (x for x in mw.parse(self.data).filter_templates() if x.name.startswith("FrameData"))
         for code in data:
             hitbox = {param.name.strip(): param.value.strip() for param in code.params}
+            if hitbox.get('images'):
+                hitbox['images'] = self.wiki.baseurl + 'Special:Redirect/file/' + hitbox['images']
             if hitbox['attack'] not in self._framedata:
                 self._framedata[hitbox['attack']] = {hitbox['name']: hitbox}
             else:
@@ -73,8 +75,7 @@ class Character:
 
     @property
     def skins(self):
-        #TODO: Can we extract this from self.page?
-        # Seems unlikely, since it only has the source images, not the locations of the thumbnails
+        #TODO: extract this from self.page
         if hasattr(self, '_skins'):
             return self._skins
         soup = self.soup

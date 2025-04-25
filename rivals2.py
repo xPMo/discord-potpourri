@@ -108,10 +108,12 @@ class Cog(discord.Cog):
                                                          if k not in ignorekeys
                                                          and v not in ignorevalues])
                                   )
+            if data.get('images'):
+                embed.set_image(url=data['images'])
             await ctx.respond(None, embed=embed)
         except KeyError as e:
-            logging.info(f'{ctx.command}: No {character}/{skin}/{palette}', exc_info=e)
-            await ctx.respond(f'Could not find {e} for {character}/{skin}/{palette}')
+            logging.info(f'{ctx.command}: No {character}/{attack}/{hit}', exc_info=e)
+            await ctx.respond(f'Could not find {e} for {character}/{attack}/{hit}')
 
 
     @discord.slash_command(name='stats', description='Get general stats for a Rivals 2 character')
