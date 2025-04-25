@@ -28,6 +28,23 @@ class Completions:
         except:
             return []
 
+    def attack(self, ctx: discord.AutocompleteContext):
+        char = ctx.options['character']
+        try:
+            return [k for k in characters[char].framedata.keys()
+                    if k.lower().startswith(ctx.value.lower())]
+        except:
+            return []
+
+    def attackhit(self, ctx: discord.AutocompleteContext):
+        char = ctx.options['character']
+        attack = ctx.options['attack']
+        try:
+            return [k for k in characters[char].framedata[attack].keys()
+                    if k.lower().startswith(ctx.value.lower())]
+        except:
+            return []
+
 # have to create completions object first
 characters = scrape.dragdown.characterlist()
 completions = Completions(characters)
@@ -70,6 +87,32 @@ class Cog(discord.Cog):
         except KeyError as e:
             logging.info(f'{ctx.command}: No {character}/{skin}/{palette}', exc_info=e)
             await ctx.respond(f'Could not find {e} for {character}/{skin}/{palette}')
+
+    @discord.slash_command(name='framedata', description='Get frame data for a particular move')
+    @option('character', description='Rivals 2 Character',
+            autocomplete=discord.utils.basic_autocomplete(characters.keys())
+    )
+    @option('attack', description='Choose an attack',
+            autocomplete=completions.attack
+    )
+    @option('hit', description='Choose the variant/hit of the attack',
+            autocomplete=completions.attackhit
+    )
+    async def framedata(self, ctx, character: str, attack: str, hit: str):
+        try:
+            ignorekeys = { 'attack', 'caption', 'character', 'hitboxes', 'images', 'name', }
+            ignorevalues = {'False', 'N/A', ''}
+            data = characters[character].framedata[attack][hit]
+            embed = discord.Embed(title=f'{character} {data["attack"]} ({data["name"]})',
+                                  description='\n'.join([f'- {k}: {v}' for k, v in data.items()
+                                                         if k not in ignorekeys
+                                                         and v not in ignorevalues])
+                                  )
+            await ctx.respond(None, embed=embed)
+        except KeyError as e:
+            logging.info(f'{ctx.command}: No {character}/{skin}/{palette}', exc_info=e)
+            await ctx.respond(f'Could not find {e} for {character}/{skin}/{palette}')
+
 
     @discord.slash_command(name='stats', description='Get general stats for a Rivals 2 character')
     @option('character', description='Rivals 2 Character',

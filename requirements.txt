@@ -2,4 +2,5 @@ py-cord
 audioop-lts # dependency of py-cord
 dotenv
 beautifulsoup4
+mwparserfromhell
 steam

@@ -1,6 +1,7 @@
 #!python
 import re
 import requests
+import mwparserfromhell as mw
 from bs4 import BeautifulSoup
 
 class Wiki:
@@ -41,11 +42,26 @@ class Character:
     def stats(self):
         if hasattr(self, '_stats'):
             return self._stats
-        start = self.data.find('{{Character')
-        end   = self.data.find('\n}}', start)
-        stats = (s.split('=') for s in self.data[start:end].split('|')[1:])
+        data  = self.data
+        start = data.find('{{Character')
+        end   = data.find('\n}}', start)
+        stats = (s.split('=') for s in data[start:end].split('|')[1:])
         self._stats = {k.strip(): v.strip() for k, v in stats}
         return self._stats
+
+    @property
+    def framedata(self):
+        if hasattr(self, '_framedata'):
+            return self._framedata
+        self._framedata = {}
+        data = (x for x in mw.parse(self.data).filter_templates() if x.name.startswith("FrameData"))
+        for code in data:
+            hitbox = {param.name.strip(): param.value.strip() for param in code.params}
+            if hitbox['attack'] not in self._framedata:
+                self._framedata[hitbox['attack']] = {hitbox['name']: hitbox}
+            else:
+                self._framedata[hitbox['attack']][hitbox['name']] = hitbox
+        return self._framedata
 
     @property
     def soup(self):
@@ -90,9 +106,6 @@ class Character:
         full, thumb, unlock = self.skins[skin]['palettes'][palette]
         return self.wiki.baseurl + full, 'https:' + thumb, unlock, self.skins[skin].get('description')
 
-    def framedata(self):
-        pass
-
 def characterlist(wiki=Wiki()):
     text = wiki.fetch('Project:ROA2_Character_Select')
     pages = (char.group(1) for char in re.finditer(r'page=([^ |]*)', text))
@@ -103,6 +116,6 @@ if __name__ == '__main__':
     with Wiki() as wiki:
         text = wiki.fetch('Project:ROA2_Character_Select')
         char = Character(wiki, 'RoA2/Loxodont')
-        print(len(char.stats))
-        print(json.dumps(char.stats, indent=4))
+        print(len(char.framedata))
+        print(json.dumps(char.framedata, indent=2))
 
