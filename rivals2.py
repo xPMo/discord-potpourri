@@ -72,17 +72,21 @@ class Cog(discord.Cog):
             autocomplete=completions.skins
     )
     @option('palette', description='Choose a palette',
-            autocomplete=completions.palettes
+            autocomplete=completions.palettes,
+            required=False, default='Default'
     )
     async def palette(self, ctx, character: str, skin: str, palette: str):
         logging.debug(f'{ctx.command}: {ctx.user}')
         logging.debug(f'{ctx.command}: {ctx.guild} ({ctx.guild_id}) {ctx.channel} ({ctx.channel_id})')
         try:
             c = characters[character]
-            image, thumb, unlock_text, description = c.get_palette(skin, palette=palette)
-            embed = discord.Embed(title=f'{skin} {character} ({palette})', description=description, url=image)
-            embed.set_image(url=thumb)
-            embed.set_footer(text=unlock_text)
+            skin_ = c.skins[skin]
+            palette_ = skin_[palette]
+            embed = discord.Embed(title=f'{skin} {character} ({palette})',
+                                  description=skin_.description,
+                                  url=c.url + '#' + palette.replace(' ', '_'))
+            embed.set_image(url=palette_.image().replace(' ', '_'))
+            embed.set_footer(text=palette_.unlock)
             await ctx.respond(None, embed=embed)
         except KeyError as e:
             logging.info(f'{ctx.command}: No {character}/{skin}/{palette}', exc_info=e)

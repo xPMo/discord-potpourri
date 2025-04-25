@@ -3,7 +3,6 @@ import re
 import itertools
 import requests
 import mwparserfromhell as mw
-from bs4 import BeautifulSoup
 
 class Wiki:
     def __init__(self, baseurl='https://dragdown.wiki/wiki/'):
@@ -23,7 +22,7 @@ def table_by_columns(node):
     ret = {}
     headings = node.contents.ifilter_tags(matches=lambda node: node.tag == 'th')
     rows = node.contents.ifilter_tags(matches=lambda node: node.tag == 'tr')
-    return itertools.zip_longest(headings, *[row.contents.nodes for row in rows])
+    return itertools.zip_longest([heading.contents.strip() for heading in headings], *[row.contents.nodes for row in rows])
 
 class Skin(dict):
     def __init__(self, *args, description=None, **kwargs):
@@ -40,35 +39,33 @@ class SkinPalette:
                 self.name = name.contents.strip()
             case _:
                 self.name = name.strip()
-        match image:
-            case None:
-                self.images = []
-            case mw.nodes.Wikilink:
-                self.images = [image]
-            case _:
-                self.images = image.contents.filter_wikilinks()
-        match unlock:
-            case None:
-                self.unlock = ''
-            case mw.nodes.Tag:
-                self.unlock = unlock.contents.strip()
-            case _:
-                self.unlock = unlock.strip()
+        if hasattr(image, 'contents'):
+            self.imagelink = image.contents.filter_wikilinks()[0]
+        else:
+            self.imagelink = image
+        if hasattr(unlock, 'contents'):
+            self.unlock = unlock.contents.strip()
+        else:
+            self.unlock = unlock
 
-    # note: add GET parameter 'width=200' to get a ~200px wide thumbnail
-    def imageurl(self):
-        return [self.wiki.baseurl + 'Special:Redirect/file/' + link.title.removeprefix('File:')
-                for link in self.images]
+    def image(self, thumb=None):
+        url = self.wiki.baseurl + 'Special:Redirect/file/' + self.imagelink.title.removeprefix('File:')
+        if thumb == True:
+            return url + '?width=' + re.match('^[0-9]*', self.imagelink.text.nodes[0].value).group()
+        if isinstance(thumb, int) and thumb > 0:
+            return url + '?width=' + str(thumb)
+        return url
 
     def __repr__(self):
         return 'SkinPalette({!r}, {!r}, {!r}, {!r})'.format(
-                self.wiki, self.name, self.images, self.unlock)
+                self.wiki, self.name, self.imagelink, self.unlock)
 
 class Character:
 
     def __init__(self, wiki, path):
         self.wiki = wiki
         self.path = path
+        self.url  = wiki.baseurl + path
 
     @property
     def page(self):
@@ -112,17 +109,12 @@ class Character:
         return self._framedata
 
     @property
-    def soup(self):
-        if hasattr(self, '_soup'):
-            return self._soup
-        request = self.wiki.session.get(self.wiki.baseurl + self.path)
-        self._soup = BeautifulSoup(request.content, features='html.parser')
-        return self._soup
-
-    def skins_mw(self):
+    def skins(self):
+        if hasattr(self, '_skins'):
+            return self._skins
         page = mw.parse(self.page)
         head = next(page.ifilter_headings(matches=lambda node: node.title.strip() == 'Cosmetics'))
-        table = {}
+        self._skins = {}
         for node in page.nodes[page.index(head) + 1:]:
             match type(node):
                 case mw.nodes.heading.Heading:
@@ -136,45 +128,11 @@ class Character:
                         description = node
                 case mw.nodes.Tag:
                     if node.tag == 'table':
+                        # Assumption: th name, tr.td image, tr.td unlock criteria
                         palettes = (SkinPalette(self.wiki, *col) for col in table_by_columns(node))
-                        table[skin] = Skin({palette.name: palette for palette in palettes},
+                        self._skins[skin] = Skin({palette.name: palette for palette in palettes},
                                         description=description)
-        return table
-
-
-    @property
-    def skins(self):
-        #TODO: extract this from self.page
-        if hasattr(self, '_skins'):
-            return self._skins
-        soup = self.soup
-        self._skins = {}
-        header = soup.find('span', {'id': 'Cosmetics'}).parent
-        for obj in header.next_siblings:
-            if obj.name == header.name:
-                break
-            for obj in obj.find_all(['h2', 'h3', 'h4', 'p', 'table']):
-                match obj.name:
-                    case 'h2' | 'h3' | 'h4':
-                        skin = obj.get_text(strip=True)
-                        self._skins[skin] = {}
-                    case 'p':
-                            self._skins[skin]['description'] = obj.get_text().strip()
-                    case 'table':
-                        palettes = {}
-                        names, links, unlocks, *_ = obj.find_all('tr')
-                        for n, l, u in zip(names.find_all('th'), links.find_all('td'), unlocks.find_all('td')):
-                            palettes[n.get_text(strip=True)] = (
-                                    l.a.get('href'),
-                                    l.img.get('src'),
-                                    u.get_text(strip=True)
-                            )
-                        self._skins[skin]['palettes'] = palettes
         return self._skins
-
-    def get_palette(self, skin, palette='Default'):
-        full, thumb, unlock = self.skins[skin]['palettes'][palette]
-        return self.wiki.baseurl + full, 'https:' + thumb, unlock, self.skins[skin].get('description')
 
 def characterlist(wiki=Wiki()):
     text = wiki.fetch('Project:ROA2_Character_Select')
