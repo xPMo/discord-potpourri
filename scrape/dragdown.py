@@ -35,6 +35,17 @@ class Character:
         if hasattr(self, '_data'):
             return self._data
         self._data = self.wiki.fetch(self.path + '/Data')
+        return self._data
+
+    @property
+    def stats(self):
+        if hasattr(self, '_stats'):
+            return self._stats
+        start = self.data.find('{{Character')
+        end   = self.data.find('\n}}', start)
+        stats = (s.split('=') for s in self.data[start:end].split('|')[1:])
+        self._stats = {k.strip(): v.strip() for k, v in stats}
+        return self._stats
 
     @property
     def soup(self):
@@ -88,9 +99,10 @@ def characterlist(wiki=Wiki()):
     return {page.rsplit('/', 1)[1]: Character(wiki, page) for page in pages}
 
 if __name__ == '__main__':
+    import json
     with Wiki() as wiki:
         text = wiki.fetch('Project:ROA2_Character_Select')
-        print("text:", text)
         char = Character(wiki, 'RoA2/Loxodont')
-        print(char.skins['Default']['palettes']['Default'])
-        print(char.skins['Abyss']['description'])
+        print(len(char.stats))
+        print(json.dumps(char.stats, indent=4))
+

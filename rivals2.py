@@ -71,5 +71,20 @@ class Cog(discord.Cog):
             logging.info(f'{ctx.command}: No {character}/{skin}/{palette}', exc_info=e)
             await ctx.respond(f'Could not find {e} for {character}/{skin}/{palette}')
 
+    @discord.slash_command(name='stats', description='Get general stats for a Rivals 2 character')
+    @option('character', description='Rivals 2 Character',
+            autocomplete=discord.utils.basic_autocomplete(characters.keys())
+    )
+    async def stats(self, ctx, character: str):
+        try:
+            c = characters[character]
+            embed = discord.Embed(title=f'{character}',
+                                  description='\n'.join([f'- {k}: {v}' for k, v in c.stats.items() if k != 'chara'])
+                                  )
+            await ctx.respond(None, embed=embed)
+        except KeyError as e:
+            logging.info(f'{ctx.command}: No {character}/{skin}/{palette}', exc_info=e)
+            await ctx.respond(f'Could not find {e} for {character}/{skin}/{palette}')
+
 def setup(bot):
     bot.add_cog(Cog(bot, characters))
