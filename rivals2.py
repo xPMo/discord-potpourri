@@ -15,7 +15,7 @@ class Completions:
         char = ctx.options['character']
         skin = ctx.options['skin']
         try:
-            return [k for k in characters[char].skins[skin].keys()
+            return [k for k in characters[char].skins[skin]['palettes'].keys()
                     if k.lower().startswith(ctx.value.lower())]
         except:
             return []
@@ -62,8 +62,8 @@ class Cog(discord.Cog):
         logging.debug(f'{ctx.command}: {ctx.guild} ({ctx.guild_id}) {ctx.channel} ({ctx.channel_id})')
         try:
             c = characters[character]
-            image, thumb, unlock_text = c.get_palette(skin, palette=palette)
-            embed = discord.Embed(title=f'{skin} {character} ({palette})', url=image)
+            image, thumb, unlock_text, description = c.get_palette(skin, palette=palette)
+            embed = discord.Embed(title=f'{skin} {character} ({palette})', description=description, url=image)
             embed.set_image(url=thumb)
             embed.set_footer(text=unlock_text)
             await ctx.respond(None, embed=embed)

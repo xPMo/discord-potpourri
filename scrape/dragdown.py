@@ -56,10 +56,13 @@ class Character:
         for obj in header.next_siblings:
             if obj.name == header.name:
                 break
-            for obj in obj.find_all(['h2', 'h3', 'h4', 'table']):
+            for obj in obj.find_all(['h2', 'h3', 'h4', 'p', 'table']):
                 match obj.name:
                     case 'h2' | 'h3' | 'h4':
                         skin = obj.get_text(strip=True)
+                        self._skins[skin] = {}
+                    case 'p':
+                            self._skins[skin]['description'] = obj.get_text().strip()
                     case 'table':
                         palettes = {}
                         names, links, unlocks, *_ = obj.find_all('tr')
@@ -69,22 +72,25 @@ class Character:
                                     l.img.get('src'),
                                     u.get_text(strip=True)
                             )
-                        self._skins[skin] = palettes
+                        self._skins[skin]['palettes'] = palettes
         return self._skins
 
     def get_palette(self, skin, palette='Default'):
-        full, thumb, unlock = self.skins[skin][palette]
-        return self.wiki.baseurl + full, 'https:' + thumb, unlock
+        full, thumb, unlock = self.skins[skin]['palettes'][palette]
+        return self.wiki.baseurl + full, 'https:' + thumb, unlock, self.skins[skin].get('description')
 
     def framedata(self):
         pass
 
 def characterlist(wiki=Wiki()):
-    text = wiki.fetch('Dragdown:ROA2_Character_Select')
+    text = wiki.fetch('Project:ROA2_Character_Select')
     pages = (char.group(1) for char in re.finditer(r'page=([^ |]*)', text))
     return {page.rsplit('/', 1)[1]: Character(wiki, page) for page in pages}
 
 if __name__ == '__main__':
     with Wiki() as wiki:
+        text = wiki.fetch('Project:ROA2_Character_Select')
+        print("text:", text)
         char = Character(wiki, 'RoA2/Loxodont')
-        print(char.skins['Default']['Default'])
+        print(char.skins['Default']['palettes']['Default'])
+        print(char.skins['Abyss']['description'])
