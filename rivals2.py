@@ -7,32 +7,44 @@ from discord.ext import commands
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s: %(message)s')
 
+def logreturn(f):
+    def wrapped(*args, **kwargs):
+        logging.info(f'function called {args} {kwargs}')
+        ret = f(*args, **kwargs)
+        logging.info(f'function returned {ret}')
+        return ret
+    return wrapped
+
 class Completions:
     def __init__(self, characters):
         self.characters = characters
+
+    def listprefix(it, pfx):
+        if pfx in it:
+            return [pfx]
+        if m := [i for i in it if pfx == i.lower()]:
+            return m
+        if m := [i for i in it if i.lower().startswith(pfx.lower())]:
+            return m
+        return [i for i in it if any(word.lstrip('(').lower().startswith(pfx.lower())
+                                     for word in i.split())]
+
+    def skins(self, ctx: discord.AutocompleteContext):
+        char = ctx.options['character']
+        return Completions.listprefix(characters[char].skins.keys(), ctx.value)
 
     def palettes(self, ctx: discord.AutocompleteContext):
         char = ctx.options['character']
         skin = ctx.options['skin']
         try:
-            return [k for k in characters[char].skins[skin]['palettes'].keys()
-                    if k.lower().startswith(ctx.value.lower())]
-        except:
-            return []
-
-    def skins(self, ctx: discord.AutocompleteContext):
-        char = ctx.options['character']
-        try:
-            return [k for k in characters[char].skins.keys()
-                    if k.lower().startswith(ctx.value.lower())]
+            return Completions.listprefix(characters[char].skins[skin].keys(), ctx.value)
         except:
             return []
 
     def attack(self, ctx: discord.AutocompleteContext):
         char = ctx.options['character']
         try:
-            return [k for k in characters[char].framedata.keys()
-                    if k.lower().startswith(ctx.value.lower())]
+            return Completions.listprefix(characters[char].framedata.keys(), ctx.value)
         except:
             return []
 
@@ -40,8 +52,7 @@ class Completions:
         char = ctx.options['character']
         attack = ctx.options['attack']
         try:
-            return [k for k in characters[char].framedata[attack].keys()
-                    if k.lower().startswith(ctx.value.lower())]
+            return Completions.listprefix(characters[char].framedata[attack].keys(), ctx.value)
         except:
             return []
 
