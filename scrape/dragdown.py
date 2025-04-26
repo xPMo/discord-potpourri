@@ -1,8 +1,11 @@
 #!python
 import re
 import itertools
+import logging
 import requests
 import mwparserfromhell as mw
+
+logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s: %(message)s')
 
 class Wiki:
     def __init__(self, baseurl='https://dragdown.wiki/wiki/'):
@@ -138,6 +141,37 @@ def characterlist(wiki=Wiki()):
     text = wiki.fetch('Project:ROA2_Character_Select')
     pages = (char.group(1) for char in re.finditer(r'page=([^ |]*)', text))
     return {page.rsplit('/', 1)[1]: Character(wiki, page) for page in pages}
+
+class Emote:
+    def __init__(self, wiki, row):
+        match row:
+            case name, rarity, text, unlock, filename:
+                self.unlock = unlock.contents.strip()
+            case name, rarity, text, filename:
+                self.unlock='Unknown'
+        self.wiki = wiki
+        self.name = name.contents.strip().title()
+        self.rarity = rarity.contents.nodes[0]
+        self.text   = text.contents.strip()
+        self.filename = filename.contents.nodes[0]
+
+    def url(self):
+        return self.wiki.baseurl + 'Special:Redirect/file/' + self.filename.title.removeprefix('File:')
+
+def emotelist(wiki=Wiki()):
+    tables = mw.parse(wiki.fetch('RoA2/Emotes')).ifilter_tags(matches=lambda node: node.tag == 'table')
+    tables = (table.contents.ifilter_tags(matches=lambda node: node.tag == 'tr') for table in tables)
+    rows   = (row.contents.ifilter_tags(matches=lambda node: node.tag in ('td', 'th')) for row in itertools.chain(*tables))
+    emotes = {}
+    for row in rows:
+        row = [*row]
+        try:
+            emote = Emote(wiki, row)
+            emotes[f'{emote.name.title()} "{emote.text}"'] = emote
+        except Exception as e:
+            print(e)
+            logging.info(f'Failed for row {row}')
+    return emotes
 
 if __name__ == '__main__':
     import json

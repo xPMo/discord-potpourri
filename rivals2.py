@@ -2,6 +2,7 @@
 import discord
 import logging
 import scrape.dragdown
+import re
 from discord.commands import option
 from discord.ext import commands
 
@@ -16,49 +17,36 @@ def logreturn(f):
     return wrapped
 
 class Completions:
-    def __init__(self, characters):
+    stripword = re.compile(r'\b[^ a-zA-Z]*|[^ a-zA-Z]*\b')
+    def __init__(self, characters, emotes):
         self.characters = characters
+        self.emotemap = emotes
+        self.emotebyquote = {emote.text: name for name, emote in emotes.items()}
 
-    def matchprefix(iterator, pfx):
+    @classmethod
+    def matchprefix(cls, iterator, pfx):
         if pfx in iterator:
             return [pfx]
         if matched := [item for item in iterator if pfx == item.lower()]:
             return matched
-        if matched := [item for item in iterator if item.lower().startswith(pfx.lower())]:
+        stripped = {re.sub(Completions.stripword, '', item.lower()): item for item in iterator}
+        matched = {stripped[key] for key in stripped if key.startswith(pfx.lower())}
+        matched.update(stripped[key] for key in stripped if any(word.startswith(pfx.lower()) for word in key.split()))
+        if matched:
             return matched
-        return [item for item in iterator if any(word.lstrip('(').lower().startswith(pfx.lower())
-                                     for word in item.split())]
+        return [x for x in iterator if pfx in x]
 
-    def skins(self, ctx: discord.AutocompleteContext):
-        char = ctx.options['character']
-        return Completions.matchprefix(characters[char].skins.keys(), ctx.value)
+    @classmethod
+    def completer(cls, getlist, *names):
+        def complete(ctx: discord.AutocompleteContext):
+            it = getlist(*(ctx.options[name] for name in names))
+            return Completions.matchprefix(it, ctx.value)
+        return complete
 
-    def palettes(self, ctx: discord.AutocompleteContext):
-        char = ctx.options['character']
-        skin = ctx.options['skin']
-        try:
-            return Completions.matchprefix(characters[char].skins[skin].keys(), ctx.value)
-        except:
-            return []
-
-    def attack(self, ctx: discord.AutocompleteContext):
-        char = ctx.options['character']
-        try:
-            return Completions.matchprefix(characters[char].framedata.keys(), ctx.value)
-        except:
-            return []
-
-    def attackhit(self, ctx: discord.AutocompleteContext):
-        char = ctx.options['character']
-        attack = ctx.options['attack']
-        try:
-            return Completions.matchprefix(characters[char].framedata[attack].keys(), ctx.value)
-        except:
-            return []
-
-# have to create completions object first
 characters = scrape.dragdown.characterlist()
-completions = Completions(characters)
+emotes = scrape.dragdown.emotelist()
+
+logging.info(f'Got {len(emotes)} emotes')
 
 class Cog(discord.Cog):
 
@@ -80,10 +68,10 @@ class Cog(discord.Cog):
             autocomplete=discord.utils.basic_autocomplete(characters.keys())
     )
     @option('skin', description='Choose a skin',
-            autocomplete=completions.skins
+            autocomplete=Completions.completer(lambda char: characters[char].skins.keys(), 'character')
     )
     @option('palette', description='Choose a palette',
-            autocomplete=completions.palettes,
+            autocomplete=Completions.completer(lambda char, skin: characters[char].skins[skin].keys(), 'character', 'skin'),
             required=False, default='Default'
     )
     async def palette(self, ctx, character: str, skin: str, palette: str):
@@ -108,10 +96,10 @@ class Cog(discord.Cog):
             autocomplete=discord.utils.basic_autocomplete(characters.keys())
     )
     @option('attack', description='Choose an attack',
-            autocomplete=completions.attack
+            autocomplete=Completions.completer(lambda char: characters[char].framedata.keys(), 'character'),
     )
     @option('hit', description='Choose the variant/hit of the attack',
-            autocomplete=completions.attackhit
+            autocomplete=Completions.completer(lambda char, attack: characters[char].framedata[attack].keys(), 'character', 'attack'),
     )
     async def framedata(self, ctx, character: str, attack: str, hit: str):
         try:
@@ -130,7 +118,6 @@ class Cog(discord.Cog):
             logging.info(f'{ctx.command}: No {character}/{attack}/{hit}', exc_info=e)
             await ctx.respond(f'Could not find {e} for {character}/{attack}/{hit}')
 
-
     @discord.slash_command(name='stats', description='Get general stats for a Rivals 2 character')
     @option('character', description='Rivals 2 Character',
             autocomplete=discord.utils.basic_autocomplete(characters.keys())
@@ -145,6 +132,22 @@ class Cog(discord.Cog):
         except KeyError as e:
             logging.info(f'{ctx.command}: No {character}/{skin}/{palette}', exc_info=e)
             await ctx.respond(f'Could not find {e} for {character}/{skin}/{palette}')
+
+    @discord.slash_command(name='emote', description='Get a Rivals 2 Emote!')
+    @option('name', description='Name of the emote',
+            autocomplete=Completions.completer(emotes.keys)
+            )
+    async def emote(self, ctx, name: str):
+        logging.debug(f'{ctx.command}: {ctx.user}')
+        logging.debug(f'{ctx.command}: {ctx.guild} ({ctx.guild_id}) {ctx.channel} ({ctx.channel_id})')
+        try:
+            emote = emotes[name]
+            url   = emote.url()
+            await ctx.respond(f'**{emote.text}**\n-# [{emote.unlock.replace("\n", " - ")}]({url})')
+        except KeyError as e:
+            logging.info(f'{ctx.command}: No emote {name}', exc_info=e)
+            await ctx.respond(f'Could not find {name}')
+
 
 def setup(bot):
     bot.add_cog(Cog(bot, characters))
