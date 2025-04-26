@@ -13,6 +13,7 @@ BASEURL = 'https://dragdown.wiki/wiki/'
 class Wiki:
     def __init__(self):
         self.session = requests.Session()
+        self._templates = {}
 
     def __enter__(self):
         return self
@@ -21,7 +22,20 @@ class Wiki:
         self.session.__exit__(*args)
 
     def fetch(self, path):
-        return self.session.get(BASEURL + path, params={'action': 'raw'}).content.decode()
+        return self.session.get(BASEURL + path, params={'action': 'raw'})
+
+    def get_template(self, path):
+        if path in self._templates:
+            return self._templates[path]
+        request = self.fetch(path)
+        if not request.ok:
+            return None
+        page = mw.parse(request.content.decode())
+        try:
+            self._templates[path] = next(page.ifilter_tags(matches=lambda node: node.tag == 'includeonly')).contents
+        except StopIteration:
+            self._templates[path] = page
+        return self._templates[path]
 
 def table_by_columns(node):
     ret = {}
@@ -99,14 +113,84 @@ class Character:
     def page(self):
         if hasattr(self, '_page'):
             return self._page
-        self._page = self.wiki.fetch(self.path)
+        self._page = mw.parse(self.wiki.fetch(self.path).content.decode())
         return self._page
+
+    """"
+    Single flat dict, since completion works well
+    """
+    @property
+    def topics(self):
+        if hasattr(self, '_topics'):
+            return self._topics
+        self._topics = {}
+
+        def addtopic(heading, parts):
+            if text := ' '.join(parts).strip():
+                self._topics[' - '.join(heading)] = text
+            parts.clear()
+
+        for title, code in self.pages.items():
+            nodes = collections.deque(code.nodes)
+            parts = []
+            heading = [title]
+            while nodes:
+                node = nodes.popleft()
+                match node:
+                    case mw.nodes.Heading():
+                        if node.level < 3:
+                            # stash last topic
+                            addtopic(heading, parts)
+                            # start new topic
+                            heading = heading[:node.level] + [node.title.strip()]
+                        else:
+                            parts.append('\n' + '#' * node.level + ' ' + node.title.strip() + '\n')
+                    case mw.nodes.Text():
+                        # append text
+                        if part := node.value.strip():
+                            parts.append(part)
+                    case mw.nodes.Wikilink():
+                        pass
+                    case int():
+                        addtopic(heading, parts)
+                        heading.pop()
+                    case mw.nodes.Template():
+                        match node.name.strip():
+                            # TODO: custom handling for various templates
+                            case 'TheoryBox':
+                                addtopic(heading, parts)
+                                heading.append(node.get('Title').value.strip())
+                                params = node.params
+                                subs = [subnode for param in node.params for subnode in param.value.nodes]
+                                nodes.appendleft(0) #TODO: better name for this flag
+                                nodes.extendleft(reversed(subs))
+                            case _:
+                                # just push all params[].nodes[] onto the stack
+                                params = node.params
+                                subs = [subnode for param in node.params for subnode in param.value.nodes]
+                                nodes.extendleft(reversed(subs))
+            addtopic(heading, parts)
+        return self._topics
+
+    @property
+    def pages(self):
+        if hasattr(self, '_pages'):
+            return self._pages
+        self._pages = {}
+        subs = (x.title.removeprefix('{{{charMainPage}}}') for x in self.wiki.get_template('Template:CharLinks').ifilter_wikilinks())
+        for sub in subs:
+            if not sub:
+                continue
+            request = self.wiki.fetch(self.path + sub)
+            if request.ok:
+                self._pages[sub.removeprefix('/')] = mw.parse(request.content.decode())
+        return self._pages
 
     @property
     def data(self):
         if hasattr(self, '_data'):
             return self._data
-        self._data = self.wiki.fetch(self.path + '/Data')
+        self._data = self.wiki.fetch(self.path + '/Data').content.decode()
         return self._data
 
     @property
@@ -140,7 +224,7 @@ class Character:
     def skins(self):
         if hasattr(self, '_skins'):
             return self._skins
-        page = mw.parse(self.page)
+        page = self.page
         head = next(page.ifilter_headings(matches=lambda node: node.title.strip() == 'Cosmetics'))
         self._skins = {}
         # ASSUMPTION: Page ordered as
@@ -180,7 +264,7 @@ class Character:
         return self._skins
 
 def characterlist(wiki=Wiki()):
-    text = wiki.fetch('Project:ROA2_Character_Select')
+    text = wiki.fetch('Project:ROA2_Character_Select').content.decode()
     pages = (char.group(1) for char in re.finditer(r'page=([^ |]*)', text))
     return {page.rsplit('/', 1)[1]: Character(wiki, page) for page in pages}
 
@@ -201,7 +285,7 @@ class Emote:
         return BASEURL + 'Special:Redirect/file/' + self.filename.title.removeprefix('File:')
 
 def emotelist(wiki=Wiki()):
-    tables = mw.parse(wiki.fetch('RoA2/Emotes')).ifilter_tags(matches=lambda node: node.tag == 'table')
+    tables = mw.parse(wiki.fetch('RoA2/Emotes').content.decode()).ifilter_tags(matches=lambda node: node.tag == 'table')
     tables = (table.contents.ifilter_tags(matches=lambda node: node.tag == 'tr') for table in tables)
     rows   = (row.contents.ifilter_tags(matches=lambda node: node.tag in ('td', 'th')) for row in itertools.chain(*tables))
     emotes = {}
@@ -217,7 +301,6 @@ def emotelist(wiki=Wiki()):
 if __name__ == '__main__':
     import json
     with Wiki() as wiki:
-        char = Character(wiki, 'RoA2/Loxodont')
-        char.page
-        print(len(char.framedata))
+        char = Character(wiki, 'RoA2/Maypul')
+        print(char.topics['Techniques - Unique Techniques - Toss Hog'])
 

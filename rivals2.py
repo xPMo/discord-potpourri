@@ -115,6 +115,22 @@ class Cog(discord.Cog):
             logging.info(f'{ctx.command}: No {character}/{attack}/{hit}', exc_info=e)
             await ctx.respond(f'Could not find {e} for {character}/{attack}/{hit}')
 
+    @discord.slash_command(name='topic', description='Get a topic from a character page')
+    @option('character', description='Rivals 2 Character',
+            autocomplete=discord.utils.basic_autocomplete(characters.keys())
+    )
+    @option('topic', description='Choose a topic',
+            autocomplete=Completions.completer(lambda char: characters[char].topics.keys(), 'character'),
+    )
+    async def topic(self, ctx, character: str, topic: str):
+        try:
+            data = characters[character].topics[topic]
+            embed = discord.Embed(title=f'{topic}', description=data[:4000])
+            await ctx.respond(None, embed=embed)
+        except KeyError as e:
+            logging.info(f'{ctx.command}: No {character}/{topic}', exc_info=e)
+            await ctx.respond(f'Could not find {e} for {character}/{topic}')
+
     @discord.slash_command(name='stats', description='Get general stats for a Rivals 2 character')
     @option('character', description='Rivals 2 Character',
             autocomplete=discord.utils.basic_autocomplete(characters.keys())
