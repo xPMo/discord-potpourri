@@ -37,6 +37,27 @@ class Wiki:
             self._templates[path] = page
         return self._templates[path]
 
+    @property
+    def general_pages(self):
+        if hasattr(self, '_general_pages'):
+            return self._general_pages
+        self._general_pages = {}
+        subs = (card.get('page').value.strip() for card in self.get_template('Template:RoA2_SysMech_Navigation').ifilter_templates(matches=lambda node: node.name == 'PageNavCard'))
+        for sub in subs:
+            if not sub:
+                continue
+            request = self.fetch(sub)
+            if request.ok:
+                self._general_pages[sub.removeprefix('RoA2/')] = mw.parse(request.content.decode())
+        return self._general_pages
+
+    @property
+    def topics(self):
+        if hasattr(self, '_topics'):
+            return self._topics
+        self._topics = build_topics(self.general_pages)
+        return self._topics
+
 def table_by_columns(node):
     ret = {}
     headings = node.contents.ifilter_tags(matches=lambda node: node.tag == 'th')
@@ -102,6 +123,55 @@ class SkinPalette:
         return 'SkinPalette({!r}, {!r}, {!r}, {!r})'.format(
                 self.wiki, self.name, self.imagelink, self.unlock)
 
+def build_topics(pages):
+    topics = {}
+    def addtopic(heading, parts):
+        if text := ' '.join(parts).strip():
+            topics[' - '.join(heading)] = text
+        parts.clear()
+
+    for title, code in pages.items():
+        nodes = collections.deque(code.nodes)
+        parts = []
+        heading = [title]
+        while nodes:
+            node = nodes.popleft()
+            match node:
+                case mw.nodes.Heading():
+                    if node.level < 3:
+                        # stash last topic
+                        addtopic(heading, parts)
+                        # start new topic
+                        heading = heading[:node.level] + [node.title.strip()]
+                    else:
+                        parts.append('\n' + '#' * node.level + ' ' + node.title.strip() + '\n')
+                case mw.nodes.Text():
+                    # append text
+                    if part := node.value.strip():
+                        parts.append(part)
+                case mw.nodes.Wikilink():
+                    pass
+                case int():
+                    addtopic(heading, parts)
+                    heading.pop()
+                case mw.nodes.Template():
+                    match node.name.strip():
+                        # TODO: custom handling for various templates
+                        case 'TheoryBox':
+                            addtopic(heading, parts)
+                            heading.append(node.get('Title').value.strip())
+                            params = node.params
+                            subs = [subnode for param in node.params for subnode in param.value.nodes]
+                            nodes.appendleft(0) #TODO: better name for this flag
+                            nodes.extendleft(reversed(subs))
+                        case _:
+                            # just push all params[].nodes[] onto the stack
+                            params = node.params
+                            subs = [subnode for param in node.params for subnode in param.value.nodes]
+                            nodes.extendleft(reversed(subs))
+        addtopic(heading, parts)
+    return topics
+
 class Character:
 
     def __init__(self, wiki, path):
@@ -123,53 +193,7 @@ class Character:
     def topics(self):
         if hasattr(self, '_topics'):
             return self._topics
-        self._topics = {}
-
-        def addtopic(heading, parts):
-            if text := ' '.join(parts).strip():
-                self._topics[' - '.join(heading)] = text
-            parts.clear()
-
-        for title, code in self.pages.items():
-            nodes = collections.deque(code.nodes)
-            parts = []
-            heading = [title]
-            while nodes:
-                node = nodes.popleft()
-                match node:
-                    case mw.nodes.Heading():
-                        if node.level < 3:
-                            # stash last topic
-                            addtopic(heading, parts)
-                            # start new topic
-                            heading = heading[:node.level] + [node.title.strip()]
-                        else:
-                            parts.append('\n' + '#' * node.level + ' ' + node.title.strip() + '\n')
-                    case mw.nodes.Text():
-                        # append text
-                        if part := node.value.strip():
-                            parts.append(part)
-                    case mw.nodes.Wikilink():
-                        pass
-                    case int():
-                        addtopic(heading, parts)
-                        heading.pop()
-                    case mw.nodes.Template():
-                        match node.name.strip():
-                            # TODO: custom handling for various templates
-                            case 'TheoryBox':
-                                addtopic(heading, parts)
-                                heading.append(node.get('Title').value.strip())
-                                params = node.params
-                                subs = [subnode for param in node.params for subnode in param.value.nodes]
-                                nodes.appendleft(0) #TODO: better name for this flag
-                                nodes.extendleft(reversed(subs))
-                            case _:
-                                # just push all params[].nodes[] onto the stack
-                                params = node.params
-                                subs = [subnode for param in node.params for subnode in param.value.nodes]
-                                nodes.extendleft(reversed(subs))
-            addtopic(heading, parts)
+        self._topics = build_topics(self.pages)
         return self._topics
 
     @property

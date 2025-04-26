@@ -117,14 +117,14 @@ class Cog(discord.Cog):
 
     @discord.slash_command(name='topic', description='Get a topic from a character page')
     @option('character', description='Rivals 2 Character',
-            autocomplete=discord.utils.basic_autocomplete(characters.keys())
+            autocomplete=discord.utils.basic_autocomplete(['General', *characters.keys()])
     )
     @option('topic', description='Choose a topic',
-            autocomplete=Completions.completer(lambda char: characters[char].topics.keys(), 'character'),
+            autocomplete=Completions.completer(lambda char: ({'General': wiki} | characters)[char].topics.keys(), 'character'),
     )
     async def topic(self, ctx, character: str, topic: str):
         try:
-            data = characters[character].topics[topic]
+            data = ({'General': wiki} | characters)[character].topics[topic]
             embed = discord.Embed(title=f'{topic}', description=data[:4000])
             await ctx.respond(None, embed=embed)
         except KeyError as e:
