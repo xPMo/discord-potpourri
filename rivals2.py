@@ -18,10 +18,6 @@ def logreturn(f):
 
 class Completions:
     stripword = re.compile(r'\b[^ a-zA-Z]*|[^ a-zA-Z]*\b')
-    def __init__(self, characters, emotes):
-        self.characters = characters
-        self.emotemap = emotes
-        self.emotebyquote = {emote.text: name for name, emote in emotes.items()}
 
     @classmethod
     def matchprefix(cls, iterator, pfx):
