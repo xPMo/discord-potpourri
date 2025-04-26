@@ -39,10 +39,11 @@ class Completions:
             return Completions.matchprefix(it, ctx.value)
         return complete
 
-characters = scrape.dragdown.characterlist()
-emotes = scrape.dragdown.emotelist()
+wiki = scrape.dragdown.Wiki()
+characters = scrape.dragdown.characterlist(wiki)
+emotes = scrape.dragdown.emotelist(wiki)
 
-logging.info(f'Got {len(emotes)} emotes')
+logging.info(f'Fetched {len(characters)} characters and {len(emotes)} emotes')
 
 class Cog(discord.Cog):
 
