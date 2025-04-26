@@ -82,7 +82,7 @@ class Cog(discord.Cog):
                                   description=skin_.description,
                                   url=c.url + '#' + palette.replace(' ', '_'))
             embed.set_image(url=palette_.image().replace(' ', '_'))
-            embed.set_footer(text=palette_.unlock)
+            embed.set_footer(text=palette_.unlock, icon_url = skin_.rarity.icon_url())
             await ctx.respond(None, embed=embed)
         except KeyError as e:
             logging.info(f'{ctx.command}: No {character}/{skin}/{palette}', exc_info=e)
@@ -127,8 +127,8 @@ class Cog(discord.Cog):
                                   )
             await ctx.respond(None, embed=embed)
         except KeyError as e:
-            logging.info(f'{ctx.command}: No {character}/{skin}/{palette}', exc_info=e)
-            await ctx.respond(f'Could not find {e} for {character}/{skin}/{palette}')
+            logging.info(f'{ctx.command}: No {character}', exc_info=e)
+            await ctx.respond(f'Could not find stats for {character}')
 
     @discord.slash_command(name='emote', description='Get a Rivals 2 Emote!')
     @option('name', description='Name of the emote',

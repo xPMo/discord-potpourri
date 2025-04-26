@@ -1,4 +1,6 @@
 #!python
+import collections
+import enum
 import re
 import itertools
 import logging
@@ -7,9 +9,9 @@ import mwparserfromhell as mw
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s: %(message)s')
 
+BASEURL = 'https://dragdown.wiki/wiki/'
 class Wiki:
-    def __init__(self, baseurl='https://dragdown.wiki/wiki/'):
-        self.baseurl = baseurl
+    def __init__(self):
         self.session = requests.Session()
 
     def __enter__(self):
@@ -19,7 +21,7 @@ class Wiki:
         self.session.__exit__(*args)
 
     def fetch(self, path):
-        return self.session.get(self.baseurl + path, params={'action': 'raw'}).content.decode()
+        return self.session.get(BASEURL + path, params={'action': 'raw'}).content.decode()
 
 def table_by_columns(node):
     ret = {}
@@ -27,9 +29,32 @@ def table_by_columns(node):
     rows = node.contents.ifilter_tags(matches=lambda node: node.tag == 'tr')
     return itertools.zip_longest([heading.contents.strip() for heading in headings], *[row.contents.nodes for row in rows])
 
+def parsetemplate(template):
+    match template.name:
+        case 'ShopRarity':
+            return Rarity(template.params[0].strip())
+
+class Rarity(enum.StrEnum):
+    UNKNOWN = 'Unknown',
+    COMMON  = 'Common',
+    RARE    = 'Rare',
+    EPIC    = 'Epic',
+    LEGEND  = 'Legendary'
+
+    @classmethod
+    def from_template(cls, template):
+        try:
+            return cls(template.params[0].strip())
+        except:
+            return cls('Unknown')
+
+    def icon_url(self):
+        return BASEURL + 'Special:Redirect/file/RoA2_Rarity_' +  self + '.png'
+
 class Skin(dict):
-    def __init__(self, *args, description=None, **kwargs):
+    def __init__(self, *args, description=None, rarity=Rarity('Common'), **kwargs):
         self.description = description
+        self.rarity      = rarity
         super().__init__(*args, **kwargs)
 
 class SkinPalette:
@@ -52,7 +77,7 @@ class SkinPalette:
             self.unlock = unlock
 
     def image(self, thumb=None):
-        url = self.wiki.baseurl + 'Special:Redirect/file/' + self.imagelink.title.removeprefix('File:')
+        url = BASEURL + 'Special:Redirect/file/' + self.imagelink.title.removeprefix('File:')
         if thumb == True:
             return url + '?width=' + re.match('^[0-9]*', self.imagelink.text.nodes[0].value).group()
         if isinstance(thumb, int) and thumb > 0:
@@ -68,7 +93,7 @@ class Character:
     def __init__(self, wiki, path):
         self.wiki = wiki
         self.path = path
-        self.url  = wiki.baseurl + path
+        self.url  = BASEURL + path
 
     @property
     def page(self):
@@ -104,7 +129,7 @@ class Character:
         for code in data:
             hitbox = {param.name.strip(): param.value.strip() for param in code.params}
             if hitbox.get('images'):
-                hitbox['images'] = self.wiki.baseurl + 'Special:Redirect/file/' + hitbox['images']
+                hitbox['images'] = BASEURL + 'Special:Redirect/file/' + hitbox['images']
             if hitbox['attack'] not in self._framedata:
                 self._framedata[hitbox['attack']] = {hitbox['name']: hitbox}
             else:
@@ -118,23 +143,40 @@ class Character:
         page = mw.parse(self.page)
         head = next(page.ifilter_headings(matches=lambda node: node.title.strip() == 'Cosmetics'))
         self._skins = {}
+        # ASSUMPTION: Page ordered as
+        # Heading
+        # (Optional) skin description
+        # - with {{ShopRarity}}, otherwise assumed common
+        # Table
+        # - th: palette name
+        # - tr.td: palette image
+        # - tr.td: palette unlock text
         for node in page.nodes[page.index(head) + 1:]:
             match type(node):
                 case mw.nodes.heading.Heading:
                     if node.level == head.level:
                         break
                     skin = node.title.strip()
-                    description = None
+                    description = []
+                    rarity = None
                 case str() | mw.nodes.Text:
-                    node = node.strip()
-                    if node:
-                        description = node
+                    if node := node.strip():
+                        description.append(node)
+                case mw.nodes.Template:
+                    # unreachable
+                    if node.name == 'ShopRarity':
+                        rarity = Rarity.from_template(node)
+                        description.append(str(rarity))
                 case mw.nodes.Tag:
                     if node.tag == 'table':
                         # Assumption: th name, tr.td image, tr.td unlock criteria
                         palettes = (SkinPalette(self.wiki, *col) for col in table_by_columns(node))
+                        if len(description):
+                            description = ' '.join(description)
+                        else:
+                            description = None
                         self._skins[skin] = Skin({palette.name: palette for palette in palettes},
-                                        description=description)
+                                        description=description, rarity=rarity)
         return self._skins
 
 def characterlist(wiki=Wiki()):
@@ -151,12 +193,12 @@ class Emote:
                 self.unlock='Unknown'
         self.wiki = wiki
         self.name = name.contents.strip().title()
-        self.rarity = rarity.contents.nodes[0]
+        self.rarity = Rarity.from_template(rarity.contents.nodes[0])
         self.text   = text.contents.strip()
         self.filename = filename.contents.nodes[0]
 
     def url(self):
-        return self.wiki.baseurl + 'Special:Redirect/file/' + self.filename.title.removeprefix('File:')
+        return BASEURL + 'Special:Redirect/file/' + self.filename.title.removeprefix('File:')
 
 def emotelist(wiki=Wiki()):
     tables = mw.parse(wiki.fetch('RoA2/Emotes')).ifilter_tags(matches=lambda node: node.tag == 'table')
@@ -169,7 +211,6 @@ def emotelist(wiki=Wiki()):
             emote = Emote(wiki, row)
             emotes[f'{emote.name.title()} "{emote.text}"'] = emote
         except Exception as e:
-            print(e)
             logging.info(f'Failed for row {row}')
     return emotes
 
