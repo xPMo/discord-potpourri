@@ -167,10 +167,10 @@ def build_topics(pages):
         nodes.extendleft(reversed(new))
     def add_topic(heading, parts, url=None, **kwargs):
         if text := ''.join(parts).strip():
-            name = [heading[0].rsplit('/', 1)[-1]] + heading[1:]
-            name = ' > '.join(name).replace('\\', '')
+            heading = [heading[0].rsplit('/', 1)[-1]] + heading[1:]
+            name = ' > '.join([x.strip() for x in heading if x]).replace('\\', '')
             if not url:
-                url = BASEURL + heading[0] + '#' + heading[-1].replace('\\', '')
+                url = BASEURL + heading[0] + '#' + heading[-1].strip().replace('\\', '')
             topics[name] = Topic(
                     name,
                     url.replace(' ', '_'),
@@ -201,9 +201,10 @@ def build_topics(pages):
                         heading = SparseList(heading[:node.level])
                         push([lambda: heading.__setitem__(level, parts[-1])])
                         push(node.title.nodes)
-                        heading.append(node.title.strip())
+                        heading[level] = node.title.strip()
                     else:
                         parts.append('\n' + '#' * node.level + ' ')
+                        push(['\n'])
                         push(node.title.nodes)
                 case mw.nodes.Text():
                     # append text
@@ -238,6 +239,8 @@ def build_topics(pages):
                         push(node.url.nodes)
                 case mw.nodes.Tag():
                     match node.tag.strip():
+                        case 'table':
+                            pass
                         case 'br':
                             parts.append('\n')
                         case 'b':
@@ -295,7 +298,7 @@ def build_topics(pages):
                             push(node.params[1].value.nodes)
                             nodes.appendleft(' (')
                             push(node.params[0].value.nodes)
-                        case 'special' | 'aerial' | 'strong' | 'grab' | 'tilt':
+                        case 'special' | 'aerial' | 'strong' | 'grab' | 'tilt' | 'ShopRarity':
                             params = node.params
                             subs = [subnode for param in node.params for subnode in param.value.nodes]
                             push(subs)
