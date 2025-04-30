@@ -10,6 +10,18 @@ import mwparserfromhell as mw
 logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s: %(message)s')
 
 BASEURL = 'https://dragdown.wiki/wiki/'
+
+class SparseList(list):
+    def __setitem__(self, index, value):
+        missing = index - len(self) + 1
+        if missing > 0:
+            self.extend([None] * missing)
+        list.__setitem__(self, index, value)
+
+    def __getitem__(self, index):
+        try: return list.__getitem__(self, index)
+        except IndexError: return None
+
 class Wiki:
     def __init__(self):
         self.session = requests.Session()
@@ -27,7 +39,7 @@ class Wiki:
     def get_template(self, path):
         if path in self._templates:
             return self._templates[path]
-        request = self.fetch(path)
+        request = self.fetch('Template:' + path)
         if not request.ok:
             return None
         page = mw.parse(request.content.decode())
@@ -42,7 +54,7 @@ class Wiki:
         if hasattr(self, '_general_pages'):
             return self._general_pages
         self._general_pages = {}
-        subs = (card.get('page').value.strip() for card in self.get_template('Template:RoA2_SysMech_Navigation').ifilter_templates(matches=lambda node: node.name == 'PageNavCard'))
+        subs = (card.get('page').value.strip() for card in self.get_template('RoA2_SysMech_Navigation').ifilter_templates(matches=lambda node: node.name == 'PageNavCard'))
         for sub in subs:
             if not sub:
                 continue
@@ -151,23 +163,27 @@ def build_topics(pages):
     - we can only handle links which hold text
     """
     topics = {}
-    def add_topic(heading, parts, url=None):
+    def push(new):
+        nodes.extendleft(reversed(new))
+    def add_topic(heading, parts, url=None, **kwargs):
         if text := ''.join(parts).strip():
             name = [heading[0].rsplit('/', 1)[-1]] + heading[1:]
-            name = ' > '.join(name)
+            name = ' > '.join(name).replace('\\', '')
             if not url:
-                url = BASEURL + heading[0] + '#' + heading[-1]
+                url = BASEURL + heading[0] + '#' + heading[-1].replace('\\', '')
             topics[name] = Topic(
                     name,
                     url.replace(' ', '_'),
-                    text
+                    text,
+                    **kwargs
                     )
         parts.clear()
 
     for title, code in pages.items():
         nodes = collections.deque(code.nodes)
         parts = []
-        heading = [title]
+        heading = SparseList()
+        heading[0] = title
         current_link = None
         # TODO:
         # [ ] dynamically resolve templates
@@ -177,60 +193,74 @@ def build_topics(pages):
                 case str():
                     parts.append(node)
                 case mw.nodes.Heading():
-                    if node.level < 3:
+                    level = node.level
+                    if level < 3:
                         # stash last topic
                         add_topic(heading, parts)
-                        # start new topic
-                        heading = heading[:node.level] + [node.title.strip()]
+                        # start new topic once text is resolved
+                        heading = SparseList(heading[:node.level])
+                        push([lambda: heading.__setitem__(level, parts[-1])])
+                        push(node.title.nodes)
+                        heading.append(node.title.strip())
                     else:
-                        parts.append('\n' + '#' * node.level + ' ' + node.title.strip() + '\n')
+                        parts.append('\n' + '#' * node.level + ' ')
+                        push(node.title.nodes)
                 case mw.nodes.Text():
                     # append text
-                    if part := node.value.strip('\n'):
+                    if part := node.value.rstrip('\n'):
                         if current_link:
                             part = re.sub(r'(?=[\]\\])', r'\\', part)
-                            current_link = re.sub(r'(?=[\(\)])', r'\\', current_link)
+                            current_link = re.sub(r'(?=[\(\)\\])', r'\\', current_link.replace(' ', '_'))
                             part.replace
                             parts.append(f'[{part}]({current_link})')
                             current_link = None
                         else:
-                            parts.append(part)
+                            parts.append(re.sub(r'(?=[-_\(\)\[\]\\*])', r'\\', part))
                 case mw.nodes.Wikilink():
                     title = node.title.strip()
-                    if title.startswith('#'):
+                    if title.startswith('File:'):
+                        current_link = BASEURL + 'Special:Redirect/file/' + title.removeprefix('File:')
+                        if node.text and node.text.nodes and  '|' in node.text.nodes[0]:
+                            node.text.nodes.pop(0)
+                    elif title.startswith('#'):
                         current_link = BASEURL + heading[0] + title
                     else:
                         current_link = BASEURL + title
                     if not node.text or not node.text.strip():
-                        nodes.extendleft(reversed(node.title.nodes))
+                        push(node.title.nodes)
                     else:
-                        nodes.extendleft(reversed(node.text.nodes))
+                        push(node.text.nodes)
                 case mw.nodes.external_link.ExternalLink():
                     if node.title:
                         current_link = node.url.strip()
-                        nodes.extendleft(reversed(node.title.nodes))
+                        push(node.title.nodes)
                     else:
-                        nodes.extendleft(reversed(node.url.nodes))
+                        push(node.url.nodes)
                 case mw.nodes.Tag():
                     match node.tag.strip():
                         case 'br':
-                            nodes.appendleft('\n\n')
+                            parts.append('\n')
                         case 'b':
                             parts.append('**')
                             nodes.appendleft('**')
-                            nodes.extendleft(reversed(node.contents.nodes))
+                            push(node.contents.nodes)
                         case 'i':
                             parts.append('*')
                             nodes.appendleft('*')
-                        case 'big':
-                            nodes.extendleft(reversed(node.contents.nodes))
+                            push(node.contents.nodes)
+                        case 'big' | 'dd':
+                            parts.append('\n')
+                            push(node.contents.nodes)
                         case 'li':
-                            parts.append('\n- ')
+                            if len(parts) and parts[-1] == '\n- ':
+                                parts[-1] = '\n  - '
+                            else:
+                                parts.append('\n- ')
                         case _:
                             nodes.appendleft('>')
-                            nodes.extendleft(reversed(node.contents.nodes))
+                            push(node.contents.nodes)
                             nodes.appendleft('|')
-                            nodes.extendleft(reversed(node.tag.nodes))
+                            push(node.tag.nodes)
                             nodes.appendleft('<')
                 case mw.nodes.Template():
                     match node.name.strip():
@@ -238,11 +268,13 @@ def build_topics(pages):
                         case 'Notation':
                             name = node.params[0].value.strip()
                             parts.append({
-                                'Attack': '🟢A',
-                                'Grab': '🟣G',
-                                'Jump': '🔵J',
-                                'Special': '🔴Sp',
-                                'Strong': '🟠S',
+                                'Attack': '🟢 Attack',
+                                'Grab': '🟣 Grab',
+                                'Jump': '🔵 Jump',
+                                'Special': '🔴 Special',
+                                'Strong': '🟠 Strong',
+                                'Shield': '⚪ Shield',
+                                'Parry': '⚪ Parry',
                                 'Left': '🢀',
                                 'Up': '🢁',
                                 'Right': '🢂',
@@ -257,29 +289,37 @@ def build_topics(pages):
                                 'DownTap': '🢃(Tap)',
                              }.get(name) or name)
                         case 'clrr' | 'StockIcon':
-                            nodes.extendleft(node.params[1].value.nodes)
-                        case 'special' | 'aerial':
-                            parts.append('*')
-                            nodes.appendleft('*')
+                            push(node.params[1].value.nodes)
+                        case 'tt':
+                            nodes.appendleft(')')
+                            push(node.params[1].value.nodes)
+                            nodes.appendleft(' (')
+                            push(node.params[0].value.nodes)
+                        case 'special' | 'aerial' | 'strong' | 'grab' | 'tilt':
                             params = node.params
                             subs = [subnode for param in node.params for subnode in param.value.nodes]
-                            nodes.extendleft(reversed(subs))
+                            push(subs)
+                        case 'ROA2_DT':
+                            parts.append(' *Deadzone Threshold*')
                         case 'TheoryBox':
                             add_topic(heading, parts)
                             url = BASEURL + heading[0] + '#' + heading[-1]
                             heading.append(node.get('Title').value.strip())
+                            caption = node.get('Oneliner').value.strip()
+                            node.remove('Title')
+                            node.remove('Oneliner')
                             params = node.params
                             subs = [subnode for param in node.params for subnode in param.value.nodes]
                             # When we finish with the TheoryBox, move to the next
-                            nodes.appendleft(lambda: (add_topic(heading, parts, url=url), heading.pop()))
-                            nodes.extendleft(reversed(subs))
+                            nodes.appendleft(lambda: (add_topic(heading, parts, url=url, caption=caption), heading.pop()))
+                            push(subs)
                         case _:
                             # default behavior for templates:
                             # ignore template name, push all params[].nodes[] onto the stack
-                            parts.append(f'{node.name}')
+                            parts.append(f' :{node.name}: ')
                             params = node.params
                             subs = [subnode for param in node.params for subnode in param.value.nodes]
-                            nodes.extendleft(reversed(subs))
+                            push(subs)
                 case _ if callable(node):
                     node()
                 case _:
@@ -293,6 +333,7 @@ class Character:
         self.wiki = wiki
         self.path = path
         self.url  = BASEURL + path
+        self.icon_url = BASEURL + 'Special:Redirect/file/' + '_'.join(path.split('/')) + '_Stock.png'
 
     @property
     def page(self):
@@ -316,7 +357,7 @@ class Character:
         if hasattr(self, '_pages'):
             return self._pages
         self._pages = {}
-        subs = (x.title.removeprefix('{{{charMainPage}}}') for x in self.wiki.get_template('Template:CharLinks').ifilter_wikilinks())
+        subs = (x.title.removeprefix('{{{charMainPage}}}') for x in self.wiki.get_template('CharLinks').ifilter_wikilinks())
         for sub in subs:
             sub = self.path + sub
             if not sub:
