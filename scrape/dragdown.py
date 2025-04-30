@@ -180,6 +180,21 @@ def build_topics(pages):
                     )
         parts.clear()
 
+    def finish_heading(level):
+        """
+        The tail of parts contains our heading, pop things off until we encounter None
+
+        There's *probably* only one item, but better safe than sorry!
+        """
+        def finish():
+            this_heading = []
+            part = parts.pop()
+            while part is not None:
+                this_heading.append(part)
+                part = parts.pop()
+            heading[level] = ''.join(reversed(this_heading))
+        return finish
+
     for title, code in pages.items():
         nodes = collections.deque(code.nodes)
         parts = []
@@ -200,9 +215,9 @@ def build_topics(pages):
                         add_topic(heading, parts)
                         # start new topic once text is resolved
                         heading = SparseList(heading[:node.level])
-                        push([lambda: heading.__setitem__(level, parts[-1])])
+                        parts.append(None)
+                        push([finish_heading(level)])
                         push(node.title.nodes)
-                        heading[level] = node.title.strip()
                     else:
                         parts.append('\n' + '#' * node.level + ' ')
                         push(['\n'])
