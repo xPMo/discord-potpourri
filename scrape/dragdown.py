@@ -232,6 +232,7 @@ def build_topics(pages):
                             push(subs)
                             continue
             resolve_node_generic(node, nodes, parts)
+
         add_topic(topics, heading, parts)
     return topics
 
@@ -500,31 +501,33 @@ class Character:
         # - th: palette name
         # - tr.td: palette image
         # - tr.td: palette unlock text
-        for node in page.nodes[page.index(head) + 1:]:
-            match type(node):
-                case mw.nodes.heading.Heading:
+        nodes = collections.deque(page.nodes[page.index(head) + 1:])
+        description = []
+        while nodes:
+            node = nodes.popleft()
+            match node:
+                case mw.nodes.heading.Heading():
                     if node.level == head.level:
                         break
                     skin = node.title.strip()
                     description = []
                     rarity = None
-                case str() | mw.nodes.Text:
-                    if node := node.strip():
-                        description.append(node)
-                case mw.nodes.Template:
+                    continue
+                case mw.nodes.Template():
                     if node.name == 'ShopRarity':
                         rarity = Rarity.from_template(node)
-                        description.append(str(rarity))
-                case mw.nodes.Tag:
+                case mw.nodes.Tag():
                     if node.tag == 'table':
                         # Assumption: th name, tr.td image, tr.td unlock criteria
                         palettes = (SkinPalette(*col) for col in table_by_columns(node))
                         if len(description):
-                            description = ' '.join(description)
+                            description = ''.join(description)
                         else:
                             description = None
                         self._skins[skin] = Skin({palette.name: palette for palette in palettes},
                                         description=description, rarity=rarity)
+                        continue
+            resolve_node_generic(node, nodes, description)
         return self._skins
 
 def characterlist(wiki=Wiki()):

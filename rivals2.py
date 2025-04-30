@@ -118,21 +118,27 @@ class Cog(discord.Cog):
         try:
             c = characters[character]
             skin_ = c.skins[skin]
+            description = skin_.description
             if palette:
                 palettes = [skin_[palette]]
                 title = f'{skin} {character} ({palette})'
             else:
                 title = f'{skin} {character}'
-                palettes = skin_.values()
-            embeds = []
-            for pal in palettes:
-                embed = discord.Embed(title=title,
-                                      description=skin_.description,
-                                      url=c.url + '#' + palette.replace(' ', '_'))
-                embed.set_image(url=pal.image().replace(' ', '_'))
-                embed.set_footer(text=pal.unlock, icon_url=skin_.rarity.icon_url() if skin_.rarity else None)
-                embeds.append(embed)
-            await ctx.respond(None, embeds=embeds)
+                palettes = [*skin_.values()]
+            # pycord: limit embeds in a response to 10.
+            for i in range(0, len(palettes), 10):
+                embeds = []
+                for pal in palettes[i:i+10]:
+                    embed = discord.Embed(title=title,
+                                          description=description,
+                                          url=c.url + '#' + skin.replace(' ', '_'))
+                    embed.set_image(url=pal.image().replace(' ', '_'))
+                    embed.set_footer(text=pal.unlock, icon_url=skin_.rarity.icon_url() if skin_.rarity else None)
+                    embeds.append(embed)
+                await ctx.respond(None, embeds=embeds)
+                # Less clutter on subsequent embed groups
+                description = None
+                title = f'{skin} {character} (continued)'
 
         except KeyError as e:
             logging.info(f'{ctx.command}: No {character}/{skin}/{palette}', exc_info=e)
