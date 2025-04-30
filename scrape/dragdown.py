@@ -261,6 +261,7 @@ def resolve_node_generic(node, nodes: collections.deque, parts: list, pagetitle=
             parts.append('\n' + '#' * node.level + ' ')
             push(['\n'])
             push(node.title.nodes)
+
         case mw.nodes.Template():
             match node.name.strip():
                 # TODO: custom handling for various templates
@@ -302,6 +303,7 @@ def resolve_node_generic(node, nodes: collections.deque, parts: list, pagetitle=
                         push(node.params[2].value.nodes)
                     except:
                         push(node.params[1].value.nodes)
+
                 case 'tt':
                     nodes.appendleft(')')
                     push(node.params[1].value.nodes)
@@ -317,6 +319,7 @@ def resolve_node_generic(node, nodes: collections.deque, parts: list, pagetitle=
                     # TODO: use context to embed move details
                     parts.append('\n')
                     push(node.get('description').value.nodes)
+
                 case _:
                     # default behavior for templates:
                     # ignore template name, push all params[].nodes[] onto the stack
@@ -325,8 +328,10 @@ def resolve_node_generic(node, nodes: collections.deque, parts: list, pagetitle=
                     params = node.params
                     subs = [subnode for param in node.params for subnode in param.value.nodes]
                     push(subs)
+
         case str():
             parts.append(node)
+
         case mw.nodes.Text():
             # append text
             if part := node.value.rstrip('\n'):
@@ -347,12 +352,14 @@ def resolve_node_generic(node, nodes: collections.deque, parts: list, pagetitle=
                 parts.append(None)
                 push([finish_link(re.sub(r'(?=[\(\)\\])', r'\\', link.replace(' ', '_')))])
                 push(node.text.nodes)
+
         case mw.nodes.external_link.ExternalLink():
             if node.title:
                 link = node.url.strip()
                 push(node.title.nodes)
             else:
                 push(node.url.nodes)
+
         case mw.nodes.Tag():
             match node.tag.strip():
                 case 'table':
@@ -384,8 +391,10 @@ def resolve_node_generic(node, nodes: collections.deque, parts: list, pagetitle=
                         nodes.appendleft('|')
                         push(node.tag.nodes)
                         nodes.appendleft('<')
+
         case _ if callable(node):
             node()
+
         case _:
             pass
 
