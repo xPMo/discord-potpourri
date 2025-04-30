@@ -215,11 +215,7 @@ def build_topics(pages):
                         parts.append(None)
                         push([finish_heading(level)])
                         push(node.title.nodes)
-                    else:
-                        parts.append('\n' + '#' * node.level + ' ')
-                        push(['\n'])
-                        push(node.title.nodes)
-                    continue
+                        continue
                 case mw.nodes.Template():
                     match node.name.strip():
                         case 'TheoryBox':
@@ -261,6 +257,10 @@ def resolve_node_generic(node, nodes: collections.deque, parts: list, pagetitle=
             parts.append(f'[{text}]({link})')
         return finish
     match node:
+        case mw.nodes.Heading():
+            parts.append('\n' + '#' * node.level + ' ')
+            push(['\n'])
+            push(node.title.nodes)
         case mw.nodes.Template():
             match node.name.strip():
                 # TODO: custom handling for various templates
