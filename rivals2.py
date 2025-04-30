@@ -17,10 +17,12 @@ def logreturn(f):
     return wrapped
 
 class Completions:
-    stripword = re.compile(r'\b[^ a-zA-Z]*|[^ a-zA-Z]*\b')
+    stripword = re.compile(r'\b[^ a-zA-Z0-9]*|[^ a-zA-Z0-9]*\b')
 
     @classmethod
     def matchprefix(cls, iterator, pfx):
+        if not pfx:
+            return iterator
         if pfx in iterator:
             return [pfx]
         if matched := [item for item in iterator if pfx == item.lower()]:
@@ -49,6 +51,7 @@ class FramedataIgnore:
     values = {'N/A', 'Default', 'SpecifiedAngle', ''}
     pairs = {
         ('hitboxCaption',  ''),
+        ('hitboxCaption',  None),
         ('landlag',  'N/A'),
         ('shieldAdv',  ''),
         ('damage',  '3%'),
@@ -159,7 +162,7 @@ class Cog(discord.Cog):
             if 'caption' in data:
                 embed.set_footer(text=data['caption'], icon_url = c.icon_url if hasattr(c, 'icon_url') else None)
             if 'images' in data:
-                embed.set_image(url=data['images'])
+                embed.set_image(url=data['images'][0])
             await ctx.respond(None, embed=embed)
         except KeyError as e:
             logging.info(f'{ctx.command}: No {character}/{attack}/{hit}', exc_info=e)
