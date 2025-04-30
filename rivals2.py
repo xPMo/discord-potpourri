@@ -105,9 +105,9 @@ class Cog(discord.Cog):
     @option('skin', description='Choose a skin',
             autocomplete=Completions.completer(lambda char: characters[char].skins.keys(), 'character')
     )
-    @option('palette', description='Choose a palette',
+    @option('palette', description='(Optional) Choose a palette',
             autocomplete=Completions.completer(lambda char, skin: characters[char].skins[skin].keys(), 'character', 'skin'),
-            required=False, default='Default'
+            required=False, default=None
     )
     async def palette(self, ctx, character: str, skin: str, palette: str):
         logging.debug(f'{ctx.command}: {ctx.user}')
@@ -115,13 +115,22 @@ class Cog(discord.Cog):
         try:
             c = characters[character]
             skin_ = c.skins[skin]
-            palette_ = skin_[palette]
-            embed = discord.Embed(title=f'{skin} {character} ({palette})',
-                                  description=skin_.description,
-                                  url=c.url + '#' + palette.replace(' ', '_'))
-            embed.set_image(url=palette_.image().replace(' ', '_'))
-            embed.set_footer(text=palette_.unlock, icon_url = skin_.rarity.icon_url())
-            await ctx.respond(None, embed=embed)
+            if palette:
+                palettes = [skin_[palette]]
+                title = f'{skin} {character} ({palette})'
+            else:
+                title = f'{skin} {character}'
+                palettes = skin_.values()
+            embeds = []
+            for pal in palettes:
+                embed = discord.Embed(title=title,
+                                      description=skin_.description,
+                                      url=c.url + '#' + palette.replace(' ', '_'))
+                embed.set_image(url=pal.image().replace(' ', '_'))
+                embed.set_footer(text=pal.unlock, icon_url=skin_.rarity.icon_url() if skin_.rarity else None)
+                embeds.append(embed)
+            await ctx.respond(None, embeds=embeds)
+
         except KeyError as e:
             logging.info(f'{ctx.command}: No {character}/{skin}/{palette}', exc_info=e)
             await ctx.respond(f'Could not find {e} for {character}/{skin}/{palette}')

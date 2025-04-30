@@ -107,7 +107,6 @@ class Skin(dict):
 
 class SkinPalette:
     def __init__(self, name, image, unlock):
-        self.wiki = wiki
         match name:
             case None:
                 self.name = ''
@@ -116,7 +115,7 @@ class SkinPalette:
             case _:
                 self.name = name.strip()
         if hasattr(image, 'contents'):
-            self.imagelink = image.contents.filter_wikilinks()[0]
+            self.imagelink = next(image.contents.ifilter_wikilinks(), None)
         else:
             self.imagelink = image
         if hasattr(unlock, 'contents'):
@@ -133,8 +132,8 @@ class SkinPalette:
         return url
 
     def __repr__(self):
-        return 'SkinPalette({!r}, {!r}, {!r}, {!r})'.format(
-                self.wiki, self.name, self.imagelink, self.unlock)
+        return 'SkinPalette({!r}, {!r}, {!r})'.format(
+                self.name, self.imagelink, self.unlock)
 
 class Topic:
     def __init__(self, title, url, body, caption=None, image=None):
@@ -356,6 +355,7 @@ class Character:
         self.path = path
         self.url  = BASEURL + path
         self.icon_url = BASEURL + 'Special:Redirect/file/' + '_'.join(path.split('/')) + '_Stock.png'
+        self.image_url = BASEURL + 'Special:Redirect/file/' + '_'.join(path.split('/')) + '_Portrait.png'
 
     @property
     def page(self):
