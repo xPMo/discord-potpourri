@@ -9,6 +9,7 @@ import mwparserfromhell as mw
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s: %(message)s')
 
+DEBUGGING = True
 BASEURL = 'https://dragdown.wiki/wiki/'
 
 class SparseList(list):
@@ -167,8 +168,8 @@ def build_topics(pages):
         nodes.extendleft(reversed(new))
     def add_topic(heading, parts, url=None, **kwargs):
         if text := ''.join(parts).strip():
-            heading = [heading[0].rsplit('/', 1)[-1]] + heading[1:]
-            name = ' > '.join([x.strip() for x in heading if x]).replace('\\', '')
+            name = [heading[0].rsplit('/', 1)[-1]] + heading[1:]
+            name = ' > '.join([x.strip() for x in name if x]).replace('\\', '')
             if not url:
                 url = BASEURL + heading[0] + '#' + heading[-1].strip().replace('\\', '')
             topics[name] = Topic(
@@ -259,12 +260,15 @@ def build_topics(pages):
                                 parts[-1] = '\n  - '
                             else:
                                 parts.append('\n- ')
+                        case 'table':
+                            pass
                         case _:
-                            nodes.appendleft('>')
-                            push(node.contents.nodes)
-                            nodes.appendleft('|')
-                            push(node.tag.nodes)
-                            nodes.appendleft('<')
+                            if DEBUGGING:
+                                nodes.appendleft('>')
+                                push(node.contents.nodes)
+                                nodes.appendleft('|')
+                                push(node.tag.nodes)
+                                nodes.appendleft('<')
                 case mw.nodes.Template():
                     match node.name.strip():
                         # TODO: custom handling for various templates

@@ -44,6 +44,44 @@ characters = scrape.dragdown.characterlist(wiki)
 emotes = scrape.dragdown.emotelist(wiki)
 
 logging.info(f'Fetched {len(characters)} characters and {len(emotes)} emotes')
+class FramedataIgnore:
+    keys = { 'attack', 'caption', 'character', 'hitboxes', 'images', 'name', }
+    values = {'N/A', 'Default', 'SpecifiedAngle', ''}
+    pairs = {
+        ('hitboxCaption',  ''),
+        ('landlag',  'N/A'),
+        ('shieldAdv',  ''),
+        ('damage',  '3%'),
+        ('baseKb',  '4.0'),
+        ('kbScale',  '0.0'),
+        ('autoFloorhugFlag',  'False'),
+        ('isProjectileFlag',  'False'),
+        ('isArticleFlag',  'False'),
+        ('bReverseCat',  'N/A'),
+        ('hitpauseMulti',  '1.0'),
+        ('extraOppHitpause',  '0'),
+        ('hitpauseMovementStrength',  '1.0'),
+        ('ssdiMulti',  '1.0'),
+        ('asdiMulti',  '1.0'),
+        ('reverseHitFlag',  'True'),
+        ('forceFlinchFlag',  'False'),
+        ('groundTechableFlag',  'True'),
+        ('breakProjectileFlag',  'Default'),
+        ('weightIndependentFlag',  'False'),
+        ('knockbackFlipper',  'SpecifiedAngle'),
+        ('hitstunMulti',  '1.0'),
+        ('hitfallHitstunMulti',  '1.0'),
+        ('parryReaction',  'Stun'),
+        ('grabPartnerInteraction',  'None'),
+        ('extraShieldStun',  '0'),
+        ('shieldDamageMulti',  '1.0'),
+        ('shieldPushbackMulti',  '1.0'),
+        ('shieldHitpauseMulti',  '1.0'),
+        ('fullChargeKbMulti',  '1.0'),
+        ('fullChargeDamageMulti',  '1.0'),
+        ('forceTumbleFlag',  'False'),
+        ('notes', ''),
+    }
 
 class Cog(discord.Cog):
 
@@ -100,15 +138,18 @@ class Cog(discord.Cog):
     )
     async def framedata(self, ctx, character: str, attack: str, hit: str):
         try:
-            ignorekeys = { 'attack', 'caption', 'character', 'hitboxes', 'images', 'name', }
-            ignorevalues = {'False', 'N/A', ''}
-            data = characters[character].framedata[attack][hit]
+            c = characters[character]
+            data = c.framedata[attack][hit]
             embed = discord.Embed(title=f'{character} {data["attack"]} ({data["name"]})',
                                   description='\n'.join([f'- {k}: {v}' for k, v in data.items()
-                                                         if k not in ignorekeys
-                                                         and v not in ignorevalues])
+                                                         if k not in FramedataIgnore.keys
+                                                         and v not in FramedataIgnore.values
+                                                         and (k, v) not in FramedataIgnore.pairs
+                                                         ])
                                   )
-            if data.get('images'):
+            if 'caption' in data:
+                embed.set_footer(text=data['caption'], icon_url = c.icon_url if hasattr(c, 'icon_url') else None)
+            if 'images' in data:
                 embed.set_image(url=data['images'])
             await ctx.respond(None, embed=embed)
         except KeyError as e:
