@@ -124,8 +124,8 @@ class Cog(discord.Cog):
     )
     async def topic(self, ctx, character: str, topic: str):
         try:
-            data = ({'General': wiki} | characters)[character].topics[topic]
-            embed = discord.Embed(title=f'{topic}', description=data[:4000])
+            obj = ({'General': wiki} | characters)[character].topics[topic]
+            embed = discord.Embed(title=obj.title, url = obj.url, description=obj.body[:4000])
             await ctx.respond(None, embed=embed)
         except KeyError as e:
             logging.info(f'{ctx.command}: No {character}/{topic}', exc_info=e)

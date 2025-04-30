@@ -48,7 +48,7 @@ class Wiki:
                 continue
             request = self.fetch(sub)
             if request.ok:
-                self._general_pages[sub.removeprefix('RoA2/')] = mw.parse(request.content.decode())
+                self._general_pages[sub] = mw.parse(request.content.decode())
         return self._general_pages
 
     @property
@@ -93,7 +93,7 @@ class Skin(dict):
         super().__init__(*args, **kwargs)
 
 class SkinPalette:
-    def __init__(self, wiki, name, image, unlock):
+    def __init__(self, name, image, unlock):
         self.wiki = wiki
         match name:
             case None:
@@ -123,53 +123,168 @@ class SkinPalette:
         return 'SkinPalette({!r}, {!r}, {!r}, {!r})'.format(
                 self.wiki, self.name, self.imagelink, self.unlock)
 
+class Topic:
+    def __init__(self, title, url, body, caption=None, image=None):
+        self.title = title
+        self.url = url
+        self.body = body
+        self.caption = caption
+        self.image = image
+
+    def image_url(self):
+        if self.image:
+            return BASEURL + 'Special:Redirect/file/' + self.imagelink.title.removeprefix('File:')
+
 def build_topics(pages):
+    """
+    Manual parsing.
+
+    This is probably bad style, but it works. Use a stack of nodes, parsing headings and
+    text directly, and pushing template/link subnodes back onto the stack.
+
+    There are particular templates (like TheoryBox) which should become their own topic.
+    We finish the last topic immediately, then push a function onto the stack first for
+    cleanup/topic creation before pushing the template's subnodes.
+
+    We *don't* want this to be recursive, because:
+    - if a template generates a heading, it needs to affect all following nodes
+    - we can only handle links which hold text
+    """
     topics = {}
-    def addtopic(heading, parts):
-        if text := ' '.join(parts).strip():
-            topics[' - '.join(heading)] = text
+    def add_topic(heading, parts, url=None):
+        if text := ''.join(parts).strip():
+            name = [heading[0].rsplit('/', 1)[-1]] + heading[1:]
+            name = ' > '.join(name)
+            if not url:
+                url = BASEURL + heading[0] + '#' + heading[-1]
+            topics[name] = Topic(
+                    name,
+                    url.replace(' ', '_'),
+                    text
+                    )
         parts.clear()
 
     for title, code in pages.items():
         nodes = collections.deque(code.nodes)
         parts = []
         heading = [title]
+        current_link = None
+        # TODO:
+        # [ ] dynamically resolve templates
         while nodes:
             node = nodes.popleft()
             match node:
+                case str():
+                    parts.append(node)
                 case mw.nodes.Heading():
                     if node.level < 3:
                         # stash last topic
-                        addtopic(heading, parts)
+                        add_topic(heading, parts)
                         # start new topic
                         heading = heading[:node.level] + [node.title.strip()]
                     else:
                         parts.append('\n' + '#' * node.level + ' ' + node.title.strip() + '\n')
                 case mw.nodes.Text():
                     # append text
-                    if part := node.value.strip():
-                        parts.append(part)
+                    if part := node.value.strip('\n'):
+                        if current_link:
+                            part = re.sub(r'(?=[\]\\])', r'\\', part)
+                            current_link = re.sub(r'(?=[\(\)])', r'\\', current_link)
+                            part.replace
+                            parts.append(f'[{part}]({current_link})')
+                            current_link = None
+                        else:
+                            parts.append(part)
                 case mw.nodes.Wikilink():
-                    pass
-                case int():
-                    addtopic(heading, parts)
-                    heading.pop()
+                    title = node.title.strip()
+                    if title.startswith('#'):
+                        current_link = BASEURL + heading[0] + title
+                    else:
+                        current_link = BASEURL + title
+                    if not node.text or not node.text.strip():
+                        nodes.extendleft(reversed(node.title.nodes))
+                    else:
+                        nodes.extendleft(reversed(node.text.nodes))
+                case mw.nodes.external_link.ExternalLink():
+                    if node.title:
+                        current_link = node.url.strip()
+                        nodes.extendleft(reversed(node.title.nodes))
+                    else:
+                        nodes.extendleft(reversed(node.url.nodes))
+                case mw.nodes.Tag():
+                    match node.tag.strip():
+                        case 'br':
+                            nodes.appendleft('\n\n')
+                        case 'b':
+                            parts.append('**')
+                            nodes.appendleft('**')
+                            nodes.extendleft(reversed(node.contents.nodes))
+                        case 'i':
+                            parts.append('*')
+                            nodes.appendleft('*')
+                        case 'big':
+                            nodes.extendleft(reversed(node.contents.nodes))
+                        case 'li':
+                            parts.append('\n- ')
+                        case _:
+                            nodes.appendleft('>')
+                            nodes.extendleft(reversed(node.contents.nodes))
+                            nodes.appendleft('|')
+                            nodes.extendleft(reversed(node.tag.nodes))
+                            nodes.appendleft('<')
                 case mw.nodes.Template():
                     match node.name.strip():
                         # TODO: custom handling for various templates
+                        case 'Notation':
+                            name = node.params[0].value.strip()
+                            parts.append({
+                                'Attack': '🟢A',
+                                'Grab': '🟣G',
+                                'Jump': '🔵J',
+                                'Special': '🔴Sp',
+                                'Strong': '🟠S',
+                                'Left': '🢀',
+                                'Up': '🢁',
+                                'Right': '🢂',
+                                'Down': '🢃',
+                                'UpLeft': '🢄',
+                                'UpRight': '🢅',
+                                'DownRight': '🢆',
+                                'DownLeft': '🢇',
+                                'LeftTap': '🢀(Tap)',
+                                'UpTap': '🢁(Tap)',
+                                'RightTap': '🢂(Tap)',
+                                'DownTap': '🢃(Tap)',
+                             }.get(name) or name)
+                        case 'clrr' | 'StockIcon':
+                            nodes.extendleft(node.params[1].value.nodes)
+                        case 'special' | 'aerial':
+                            parts.append('*')
+                            nodes.appendleft('*')
+                            params = node.params
+                            subs = [subnode for param in node.params for subnode in param.value.nodes]
+                            nodes.extendleft(reversed(subs))
                         case 'TheoryBox':
-                            addtopic(heading, parts)
+                            add_topic(heading, parts)
+                            url = BASEURL + heading[0] + '#' + heading[-1]
                             heading.append(node.get('Title').value.strip())
                             params = node.params
                             subs = [subnode for param in node.params for subnode in param.value.nodes]
-                            nodes.appendleft(0) #TODO: better name for this flag
+                            # When we finish with the TheoryBox, move to the next
+                            nodes.appendleft(lambda: (add_topic(heading, parts, url=url), heading.pop()))
                             nodes.extendleft(reversed(subs))
                         case _:
-                            # just push all params[].nodes[] onto the stack
+                            # default behavior for templates:
+                            # ignore template name, push all params[].nodes[] onto the stack
+                            parts.append(f'{node.name}')
                             params = node.params
                             subs = [subnode for param in node.params for subnode in param.value.nodes]
                             nodes.extendleft(reversed(subs))
-        addtopic(heading, parts)
+                case _ if callable(node):
+                    node()
+                case _:
+                    pass
+        add_topic(heading, parts)
     return topics
 
 class Character:
@@ -203,11 +318,12 @@ class Character:
         self._pages = {}
         subs = (x.title.removeprefix('{{{charMainPage}}}') for x in self.wiki.get_template('Template:CharLinks').ifilter_wikilinks())
         for sub in subs:
+            sub = self.path + sub
             if not sub:
                 continue
-            request = self.wiki.fetch(self.path + sub)
+            request = self.wiki.fetch(sub)
             if request.ok:
-                self._pages[sub.removeprefix('/')] = mw.parse(request.content.decode())
+                self._pages[sub] = mw.parse(request.content.decode())
         return self._pages
 
     @property
@@ -278,7 +394,7 @@ class Character:
                 case mw.nodes.Tag:
                     if node.tag == 'table':
                         # Assumption: th name, tr.td image, tr.td unlock criteria
-                        palettes = (SkinPalette(self.wiki, *col) for col in table_by_columns(node))
+                        palettes = (SkinPalette(*col) for col in table_by_columns(node))
                         if len(description):
                             description = ' '.join(description)
                         else:
@@ -326,5 +442,5 @@ if __name__ == '__main__':
     import json
     with Wiki() as wiki:
         char = Character(wiki, 'RoA2/Maypul')
-        print(char.topics['Techniques - Unique Techniques - Toss Hog'])
+        print(char.topics['Techniques - Wrap'])
 
