@@ -249,6 +249,17 @@ def resolve_node_generic(node, nodes: collections.deque, parts: list, pagetitle=
     """
     def push(new):
         nodes.extendleft(reversed(new))
+    def finish_link(link):
+        def finish():
+            text = []
+            part = parts.pop()
+            while part is not None:
+                text.append(part)
+                part = parts.pop()
+            text = ''.join(reversed(text))
+            text = re.sub(r'(?=[\]\\])', r'\\', text)
+            parts.append(f'[{text}]({link})')
+        return finish
     match node:
         case mw.nodes.Template():
             match node.name.strip():
@@ -276,8 +287,21 @@ def resolve_node_generic(node, nodes: collections.deque, parts: list, pagetitle=
                         'RightTap': '🢂(Tap)',
                         'DownTap': '🢃(Tap)',
                      }.get(name) or name)
-                case 'clrr' | 'StockIcon':
+                case 'RoA2_FTilt_Arrows':
+                    parts.append('🢀 / 🢂')
+                case 'RoA2_DTilt_Arrow':
+                    parts.append('🢃')
+
+                case 'clr' | 'clrr' | 'StockIcon':
                     push(node.params[1].value.nodes)
+                case 'term' | 'Term':
+                    parts.append(None)
+                    link = BASEURL + node.params[0].value.strip() + 'Glossary#' + node.params[1].value.strip()
+                    push([finish_link(re.sub(r'(?=[\(\)\\])', r'\\', link.replace(' ', '_')))])
+                    try:
+                        push(node.params[2].value.nodes)
+                    except:
+                        push(node.params[1].value.nodes)
                 case 'tt':
                     nodes.appendleft(')')
                     push(node.params[1].value.nodes)
@@ -289,10 +313,15 @@ def resolve_node_generic(node, nodes: collections.deque, parts: list, pagetitle=
                     push(subs)
                 case 'ROA2_DT':
                     parts.append(' *Deadzone Threshold*')
+                case 'ROA2 Move Card':
+                    # TODO: use context to embed move details
+                    parts.append('\n')
+                    push(node.get('description').value.nodes)
                 case _:
                     # default behavior for templates:
                     # ignore template name, push all params[].nodes[] onto the stack
-                    parts.append(f' :{node.name}: ')
+                    if DEBUGGING:
+                        parts.append('{' + str(node.name) + '}')
                     params = node.params
                     subs = [subnode for param in node.params for subnode in param.value.nodes]
                     push(subs)
@@ -301,7 +330,7 @@ def resolve_node_generic(node, nodes: collections.deque, parts: list, pagetitle=
         case mw.nodes.Text():
             # append text
             if part := node.value.rstrip('\n'):
-                parts.append(re.sub(r'(?=[-_\(\)\[\]\\*])', r'\\', part))
+                parts.append(re.sub(r'(?=[_\(\)\[\]\\*])', r'\\', part))
         case mw.nodes.Wikilink():
             title = node.title.strip()
             if title.startswith('File:'):
@@ -315,17 +344,6 @@ def resolve_node_generic(node, nodes: collections.deque, parts: list, pagetitle=
             if not node.text or not node.text.strip():
                 push(node.title.nodes)
             else:
-                def finish_link(link):
-                    def finish():
-                        text = []
-                        part = parts.pop()
-                        while part is not None:
-                            text.append(part)
-                            part = parts.pop()
-                        text = ''.join(reversed(text))
-                        text = re.sub(r'(?=[\]\\])', r'\\', text)
-                        parts.append(f'[{text}]({link})')
-                    return finish
                 parts.append(None)
                 push([finish_link(re.sub(r'(?=[\(\)\\])', r'\\', link.replace(' ', '_')))])
                 push(node.text.nodes)
@@ -439,15 +457,19 @@ class Character:
         for code in data:
             hitbox = {}
             for param in code.params:
+                name  = param.name.strip()
+                if name == 'images':
+                    hitbox['images'] = [BASEURL + 'Special:Redirect/file/' + x.strip() for x in str(param.value).split('\\')]
+                    continue
                 nodes = collections.deque(param.value.nodes)
                 parts = []
                 while nodes:
                     resolve_node_generic(nodes.popleft(), nodes, parts)
                 hitbox[param.name.strip()] = ''.join(parts).strip()
 
-            print(hitbox['name'])
-            if hitbox.get('images'):
-                hitbox['images'] = [BASEURL + 'Special:Redirect/file/' + image.strip() for image in hitbox['images'].split('\\')]
+            if 'caption' in hitbox:
+                hitbox['caption'] = [x.strip() for x in re.split(r'\s\\\\\s', hitbox['caption'])]
+
             if hitbox['attack'] not in self._framedata:
                 self._framedata[hitbox['attack']] = {hitbox['name']: hitbox}
             else:
@@ -481,7 +503,6 @@ class Character:
                     if node := node.strip():
                         description.append(node)
                 case mw.nodes.Template:
-                    # unreachable
                     if node.name == 'ShopRarity':
                         rarity = Rarity.from_template(node)
                         description.append(str(rarity))

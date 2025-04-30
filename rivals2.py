@@ -153,6 +153,7 @@ class Cog(discord.Cog):
             c = characters[character]
             data = c.framedata[attack][hit]
             embed = discord.Embed(title=f'{character} {data["attack"]} ({data["name"]})',
+                                  url=c.url + '#' + data["attack"].replace(' ', '_'),
                                   description='\n'.join([f'- {k}: {v}' for k, v in data.items()
                                                          if k not in FramedataIgnore.keys
                                                          and v not in FramedataIgnore.values
@@ -160,10 +161,14 @@ class Cog(discord.Cog):
                                                          ])
                                   )
             if 'caption' in data:
-                embed.set_footer(text=data['caption'], icon_url = c.icon_url if hasattr(c, 'icon_url') else None)
-            if 'images' in data:
-                embed.set_image(url=data['images'][0])
-            await ctx.respond(None, embed=embed)
+                embed.set_footer(text=' / '.join(data['caption']), icon_url = c.icon_url if hasattr(c, 'icon_url') else None)
+            if not 'images' in data:
+                await ctx.respond(None, embed=embed)
+            else:
+                embeds = [embed]
+                for image in data['images']:
+                    embeds.append(discord.Embed(title=embed.title, url=embed.url).set_image(url=image))
+                await ctx.respond(None, embeds=embeds)
         except KeyError as e:
             logging.info(f'{ctx.command}: No {character}/{attack}/{hit}', exc_info=e)
             await ctx.respond(f'Could not find {e} for {character}/{attack}/{hit}')
