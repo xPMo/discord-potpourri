@@ -204,12 +204,18 @@ class Cog(discord.Cog):
     async def glossary(self, ctx, term: str):
         try:
             obj = wiki.glossary[term]
-            embed = discord.Embed(title=obj.term, url=obj.url(), description=obj.summary)
+            text = [f'**[{obj.term}](<{obj.url()}>)**: {obj.summary}']
+            #embed = discord.Embed(title=obj.term, url=obj.url(), description=obj.summary)
+            if obj.display:
+                text.append(f' [(video)]({obj.display})')
             if obj.links:
-                embed.add_field(name='See also', value=', '.join(obj.links))
+                text.extend(['\n-# **See also**: ', ', '.join(obj.links)])
+                #embed.add_field(name='See also', value=', '.join(obj.links))
             if obj.aliases:
-                embed.add_field(name='Also known as', value=', '.join(obj.aliases))
-            await ctx.respond(embed=embed)
+                text.extend(['\n-# (Also known as ', ', '.join(repr(alias) for alias in obj.aliases), ')' ])
+                #embed.add_field(name='Also known as', value=', '.join(obj.aliases))
+            await ctx.respond(''.join(text))
+            #await ctx.respond(embed=embed)
         except KeyError as e:
             logging.info(f'{ctx.command}: No glossary term {term}', exc_info=e)
             await ctx.respond(f'Could not find {e} for glossary term {term}')

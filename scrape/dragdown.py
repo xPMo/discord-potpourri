@@ -84,11 +84,16 @@ class Wiki:
             if node.has('alias'):
                 aliases = [alias.strip() for alias in node.get('alias').value.split(',')]
             if node.has('altLink'):
-                links = [nodes_to_text([link], pagetitle='RoA2/Glossary') for link in node.get('altLink').value.ifilter(
-                    matches=lambda node: type(node) in [mw.nodes.Wikilink, mw.nodes.ExternalLink]
-                )]
+                links = [nodes_to_text([link], pagetitle='RoA2/Glossary', suppress_links=True)
+                         for link in node.get('altLink').value.ifilter(
+                            matches=lambda node: type(node) in [mw.nodes.Wikilink, mw.nodes.ExternalLink]
+                         )]
+            display = None
+            if node.has('display'):
+                display = node.get('display').value.strip().replace(' ', '_')
+                display = BASEURL + 'Special:Redirect/file/' + display
 
-            obj = GlossaryTerm(term, summary, aliases, links)
+            obj = GlossaryTerm(term, summary, aliases, links, display)
             self._glossary[term] = obj
             for alias in aliases:
                 self._glossary[alias] = obj
@@ -112,7 +117,7 @@ def parsetemplate(template):
         case 'ShopRarity':
             return Rarity(template.params[0].strip())
 
-class GlossaryTerm(collections.namedtuple('GlossaryTerm', ['term', 'summary', 'aliases', 'links'])):
+class GlossaryTerm(collections.namedtuple('GlossaryTerm', ['term', 'summary', 'aliases', 'links', 'display'])):
     def url(self):
         return BASEURL + 'RoA2/Glossary#' + self.term.replace(' ', '_')
 
@@ -271,7 +276,7 @@ def build_topics(pages):
         add_topic(topics, heading, parts)
     return topics
 
-def nodes_to_text(nodes, pagetitle=None):
+def nodes_to_text(nodes, pagetitle=None, suppress_links=False):
     """This is the general purpose function for converting nodes into text.
 
     If a function must do something special like extract a table,
@@ -282,10 +287,10 @@ def nodes_to_text(nodes, pagetitle=None):
     nodes = collections.deque(nodes)
     parts = []
     while nodes:
-        resolve_node_generic(nodes.popleft(), nodes, parts, pagetitle=pagetitle)
+        resolve_node_generic(nodes.popleft(), nodes, parts, pagetitle=pagetitle, suppress_links=suppress_links)
     return ''.join(parts)
 
-def resolve_node_generic(node, nodes: collections.deque, parts: list, pagetitle=None):
+def resolve_node_generic(node, nodes: collections.deque, parts: list, pagetitle=None, suppress_links=False):
     """
     Generic code for resolving a single node.
     Pushes to :nodes:, and builds the resulting markdown-ish string on :parts:
@@ -304,7 +309,10 @@ def resolve_node_generic(node, nodes: collections.deque, parts: list, pagetitle=
                 part = parts.pop()
             text = ''.join(reversed(text))
             text = re.sub(r'(?=[\]\\])', r'\\', text)
-            parts.append(f'[{text}]({link})')
+            if suppress_links:
+                parts.append(f'[{text}](<{link}>)')
+            else:
+                parts.append(f'[{text}]({link})')
         return finish
     match node:
         case mw.nodes.Heading():
