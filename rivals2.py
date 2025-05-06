@@ -197,6 +197,23 @@ class Cog(discord.Cog):
             logging.info(f'{ctx.command}: No {character}/{topic}', exc_info=e)
             await ctx.respond(f'Could not find {e} for {character}/{topic}')
 
+    @discord.slash_command(name='glossary', description='Get the definition of a term from the glossary')
+    @option('term', description='The term to look up',
+            autocomplete=Completions.completer(wiki.glossary.keys)
+    )
+    async def glossary(self, ctx, term: str):
+        try:
+            obj = wiki.glossary[term]
+            embed = discord.Embed(title=obj.term, url=obj.url(), description=obj.summary)
+            if obj.links:
+                embed.add_field(name='See also', value=', '.join(obj.links))
+            if obj.aliases:
+                embed.add_field(name='Also known as', value=', '.join(obj.aliases))
+            await ctx.respond(embed=embed)
+        except KeyError as e:
+            logging.info(f'{ctx.command}: No glossary term {term}', exc_info=e)
+            await ctx.respond(f'Could not find {e} for glossary term {term}')
+
     @discord.slash_command(name='stats', description='Get general stats for a Rivals 2 character')
     @option('character', description='Rivals 2 Character',
             autocomplete=discord.utils.basic_autocomplete(characters.keys())

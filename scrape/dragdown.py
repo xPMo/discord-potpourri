@@ -65,6 +65,36 @@ class Wiki:
         return self._general_pages
 
     @property
+    def glossary(self):
+        if hasattr(self, '_glossary'):
+            return self._glossary
+        self._glossary = {}
+        wikitext = mw.parse(self.fetch('RoA2/Glossary').content.decode())
+        for node in wikitext.ifilter_templates(matches=lambda node: node.name == 'GlossaryData-ROA2'):
+            # Skip if there's no term or summary
+            try:
+                term = node.get('term').value.strip()
+                summary = nodes_to_text(node.get('summary').value.nodes, pagetitle='RoA2/Glossary').strip()
+            except:
+                logging.warning(f'Badly-formatted glossary entry {node.strip()}')
+                continue
+
+            aliases = []
+            links = []
+            if node.has('alias'):
+                aliases = [alias.strip() for alias in node.get('alias').value.split(',')]
+            if node.has('altLink'):
+                links = [nodes_to_text([link], pagetitle='RoA2/Glossary') for link in node.get('altLink').value.ifilter(
+                    matches=lambda node: type(node) in [mw.nodes.Wikilink, mw.nodes.ExternalLink]
+                )]
+
+            obj = GlossaryTerm(term, summary, aliases, links)
+            self._glossary[term] = obj
+            for alias in aliases:
+                self._glossary[alias] = obj
+        return self._glossary
+
+    @property
     def topics(self):
         if hasattr(self, '_topics'):
             return self._topics
@@ -81,6 +111,10 @@ def parsetemplate(template):
     match template.name:
         case 'ShopRarity':
             return Rarity(template.params[0].strip())
+
+class GlossaryTerm(collections.namedtuple('GlossaryTerm', ['term', 'summary', 'aliases', 'links'])):
+    def url(self):
+        return BASEURL + 'RoA2/Glossary#' + self.term.replace(' ', '_')
 
 class Rarity(enum.StrEnum):
     UNKNOWN = 'Unknown',
@@ -196,7 +230,8 @@ def build_topics(pages):
 
     for pagetitle, code in pages.items():
         nodes = collections.deque(code.nodes)
-        parts = []
+        description = []
+        parts = description
         heading = SparseList()
         heading[0] = pagetitle
         # TODO:
@@ -235,6 +270,20 @@ def build_topics(pages):
 
         add_topic(topics, heading, parts)
     return topics
+
+def nodes_to_text(nodes, pagetitle=None):
+    """This is the general purpose function for converting nodes into text.
+
+    If a function must do something special like extract a table,
+    copy the body of this function and insert your case *before* the resolve_node_generic call.
+
+    See build_topics or Character.skins for implementations of this idea.
+    """
+    nodes = collections.deque(nodes)
+    parts = []
+    while nodes:
+        resolve_node_generic(nodes.popleft(), nodes, parts, pagetitle=pagetitle)
+    return ''.join(parts)
 
 def resolve_node_generic(node, nodes: collections.deque, parts: list, pagetitle=None):
     """
@@ -471,11 +520,7 @@ class Character:
                 if name == 'images':
                     hitbox['images'] = [BASEURL + 'Special:Redirect/file/' + x.strip() for x in str(param.value).split('\\')]
                     continue
-                nodes = collections.deque(param.value.nodes)
-                parts = []
-                while nodes:
-                    resolve_node_generic(nodes.popleft(), nodes, parts)
-                hitbox[param.name.strip()] = ''.join(parts).strip()
+                hitbox[param.name.strip()] = nodes_to_text(param.value.nodes).strip()
 
             if 'caption' in hitbox:
                 hitbox['caption'] = [x.strip() for x in re.split(r'\s\\\\\s', hitbox['caption'])]
