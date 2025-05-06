@@ -183,7 +183,7 @@ class Cog(discord.Cog):
     @option('character', description='Rivals 2 Character',
             autocomplete=discord.utils.basic_autocomplete(['General', *characters.keys()])
     )
-    @option('topic', description='Choose a topic',
+    @option('fulltopic', description='Choose a topic',
             autocomplete=Completions.completer(lambda char: ({'General': wiki} | characters)[char].topics.keys(), 'character'),
     )
     async def topic(self, ctx, character: str, topic: str):

@@ -74,7 +74,7 @@ class Wiki:
             # Skip if there's no term or summary
             try:
                 term = node.get('term').value.strip()
-                summary = nodes_to_text(node.get('summary').value.nodes, pagetitle='RoA2/Glossary').strip()
+                summary = nodes_to_text(node.get('summary').value.nodes, pagetitle='RoA2/Glossary', suppress_links=True).strip()
             except:
                 logging.warning(f'Badly-formatted glossary entry {node.strip()}')
                 continue
@@ -326,13 +326,13 @@ def resolve_node_generic(node, nodes: collections.deque, parts: list, pagetitle=
                 case 'Notation':
                     name = node.params[0].value.strip()
                     parts.append({
-                        'Attack': '🟢 Attack',
-                        'Grab': '🟣 Grab',
-                        'Jump': '🔵 Jump',
-                        'Special': '🔴 Special',
-                        'Strong': '🟠 Strong',
-                        'Shield': '⚪ Shield',
-                        'Parry': '⚪ Parry',
+                        #'Attack': '🟢 Attack',
+                        #'Grab': '🟣 Grab',
+                        #'Jump': '🔵 Jump',
+                        #'Special': '🔴 Special',
+                        #'Strong': '🟠 Strong',
+                        #'Shield': '⚪ Shield',
+                        #'Parry': '⚪ Parry',
                         'Left': '🢀',
                         'Up': '🢁',
                         'Right': '🢂',
@@ -351,8 +351,20 @@ def resolve_node_generic(node, nodes: collections.deque, parts: list, pagetitle=
                 case 'RoA2_DTilt_Arrow':
                     parts.append('🢃')
 
-                case 'clr' | 'clrr' | 'StockIcon':
+                case 'clr' | 'clrr':
                     push(node.params[1].value.nodes)
+
+                case 'StockIcon':
+                    parts.append(None)
+                    try:
+                        link = BASEURL + node.params.get('LinkOverride').value.strip()
+                    except:
+                        link = BASEURL + node.params[0].value.strip() + '/' + node.params[1].value.strip()
+                    push([finish_link(re.sub(r'(?=[\(\)\\])', r'\\', link.replace(' ', '_')))])
+                    try:
+                        push(node.params.get('Label').value.nodes)
+                    except:
+                        push(node.params[1].value.nodes)
                 case 'term' | 'Term':
                     parts.append(None)
                     link = BASEURL + node.params[0].value.strip() + 'Glossary#' + node.params[1].value.strip()
