@@ -599,8 +599,8 @@ class Character:
 
 def characterlist(wiki=Wiki()):
     text = wiki.fetch('Project:ROA2_Character_Select').content.decode()
-    pages = (char.group(1) for char in re.finditer(r'page=([^ |]*)', text))
-    return {page.rsplit('/', 1)[1]: Character(wiki, page) for page in pages}
+    names = (char.group(1) for char in re.finditer(r'character=([^ |]*)', text))
+    return {name: Character(wiki, 'RoA2/' + name) for name in names}
 
 class Emote:
     def __init__(self, wiki, row):
