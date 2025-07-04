@@ -24,8 +24,10 @@ class SparseList(list):
         except IndexError: return None
 
 class Wiki:
-    def __init__(self):
+    def __init__(self, user_agent=None):
         self.session = requests.Session()
+        if user_agent:
+            self.session.headers.update({'User-Agent': user_agent})
         self._templates = {}
 
     def __enter__(self):
