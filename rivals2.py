@@ -41,21 +41,23 @@ class Completions:
             return Completions.matchprefix(it, ctx.value)
         return complete
 
-wiki = scrape.dragdown.Wiki()
+wiki = scrape.dragdown.Wiki(user_agent='Python/Dragdown Bot, contact @gammafn on Discord')
 characters = scrape.dragdown.characterlist(wiki)
 emotes = scrape.dragdown.emotelist(wiki)
 
 logging.info(f'Fetched {len(characters)} characters and {len(emotes)} emotes')
-class FramedataIgnore:
-    keys = { 'attack', 'caption', 'character', 'hitboxes', 'images', 'name', }
-    values = {'N/A', 'Default', 'SpecifiedAngle', ''}
+def framedata_ignore(k, v):
+    keys = { 'attack', 'caption', 'character', 'hitboxes', 'images', 'name' }
+    values = {None, 'N/A', 'Default', 'SpecifiedAngle', ''}
     pairs = {
+        ('angle', '362'),
+        ('angle', '363'),
         ('hitboxCaption',  ''),
         ('hitboxCaption',  None),
         ('landlag',  'N/A'),
         ('shieldAdv',  ''),
-        ('damage',  '3%'),
-        ('baseKb',  '4.0'),
+        ('damage',  '0%'),
+        ('baseKb',  '0.0'),
         ('kbScale',  '0.0'),
         ('autoFloorhugFlag',  'False'),
         ('isProjectileFlag',  'False'),
@@ -85,6 +87,25 @@ class FramedataIgnore:
         ('forceTumbleFlag',  'False'),
         ('notes', ''),
     }
+
+    return k in keys or v in values or (k, v) in pairs
+
+framedata_formats = [
+        ('Damage', ['{damage}']),
+        ('Knockback', ['{baseKb} + {kbScale} @ {angle}°\n({knockbackFlipper})',
+                       '{baseKb} @ {angle}°\n({knockbackFlipper})',
+                       '{baseKb} + {kbScale} @ {knockbackFlipper}',
+                       '{baseKb} @ {knockbackFlipper})',
+                       '{baseKb} + {kbScale} @ {angle}°',
+                       '{baseKb} @ {angle}°',
+                       ]),
+        ('Startup', ['{startup}']),
+        ('Active', ['{totalActive}']),
+        ('Recovery', ['{endlag}, Cancel: {cancel} (Landing: {landlag})',
+                      '{endlag}, Cancel: {cancel}',
+                      '{endlag} (Landing: {landlag}',
+                      '{endlag}']),
+]
 
 class Cog(discord.Cog):
 
@@ -151,21 +172,42 @@ class Cog(discord.Cog):
     @option('attack', description='Choose an attack',
             autocomplete=Completions.completer(lambda char: characters[char].framedata.keys(), 'character'),
     )
-    @option('hit', description='Choose the variant/hit of the attack',
+    @option('mode', description='Choose the variant of the attack',
             autocomplete=Completions.completer(lambda char, attack: characters[char].framedata[attack].keys(), 'character', 'attack'),
     )
-    async def framedata(self, ctx, character: str, attack: str, hit: str):
+    async def framedata(self, ctx, character: str, attack: str, mode: str):
         try:
             c = characters[character]
-            data = c.framedata[attack][hit]
-            embed = discord.Embed(title=f'{character} {data["attack"]} ({data["name"]})',
+            data = c.framedata[attack][mode]
+            filtered_data = {k: v for k, v in data.items() if not framedata_ignore(k, v)}
+            if 'mode' in data:
+                title = f'{character} {data["attack"]} ({data["mode"]})'
+            else:
+                title = f'{character} {data["attack"]}'
+            embed = discord.Embed(title=title,
                                   url=c.url + '#' + data["attack"].replace(' ', '_'),
-                                  description='\n'.join([f'- {k}: {v}' for k, v in data.items()
-                                                         if k not in FramedataIgnore.keys
-                                                         and v not in FramedataIgnore.values
-                                                         and (k, v) not in FramedataIgnore.pairs
-                                                         ])
+                                  #description='\n'.join([f'-# - {k}: {v}' for k, v in data.items() if not framedata_ignore(k, v)])
                                   )
+            for fieldname, fstrings in framedata_formats:
+                for fstring in fstrings:
+                    try:
+                        embed.add_field(name=fieldname, value=fstring.format(**filtered_data))
+                        break
+                    except:
+                        pass
+
+            flags = [key.removesuffix('Flag') for key in data if key.endswith('Flag') and data[key] not in ['False', 'Default'] ]
+            if flags:
+                embed.add_field(name='Flags', value=', '.join(flags))
+
+            try:
+                shieldstun = int(0.8 * float(data['damage'].strip('%')) + 1 + float(data.get('extraShieldStun') or 0))
+                endlag = min(int(filtered_data.get(key) or 999) for key in ['endlag', 'landlag'])
+                if endlag < 999:
+                    embed.add_field(name='Advantage', value=f'{shieldstun - endlag} ({shieldstun} - {endlag})')
+            except KeyError:
+                pass
+
             if 'caption' in data:
                 embed.set_footer(text=' / '.join(data['caption']), icon_url = c.icon_url if hasattr(c, 'icon_url') else None)
             if not 'images' in data:
@@ -176,8 +218,8 @@ class Cog(discord.Cog):
                     embeds.append(discord.Embed(title=embed.title, url=embed.url).set_image(url=image))
                 await ctx.respond(None, embeds=embeds)
         except KeyError as e:
-            logging.info(f'{ctx.command}: No {character}/{attack}/{hit}', exc_info=e)
-            await ctx.respond(f'Could not find {e} for {character}/{attack}/{hit}')
+            logging.info(f'{ctx.command}: No {character}/{attack}/{mode}', exc_info=e)
+            await ctx.respond(f'Could not find {e} for {character}/{attack}/{mode}')
 
     @discord.slash_command(name='topic', description='Get a topic from a character page')
     @option('character', description='Rivals 2 Character',
@@ -204,17 +246,21 @@ class Cog(discord.Cog):
     async def glossary(self, ctx, term: str):
         try:
             obj = wiki.glossary[term]
-            text = [f'**[{obj.term}](<{obj.url()}>)**: {obj.summary}']
+            text = [f'> **[{obj.term}](<{obj.url()}>)**\n> -# {obj.summary}']
             #embed = discord.Embed(title=obj.term, url=obj.url(), description=obj.summary)
             if obj.display:
-                text.append(f' [(video)]({obj.display})')
+                text.append(f' [🎞️]({obj.display})')
+            if obj.links or obj.aliases:
+                text.append('\n> -# - ')
             if obj.links:
-                text.extend(['\n-# **See also**: ', ', '.join(obj.links)])
-                #embed.add_field(name='See also', value=', '.join(obj.links))
+                text.extend(['See also: ', ', '.join(obj.links)])
+            if obj.links and obj.aliases:
+                text.append(' || ')
             if obj.aliases:
-                text.extend(['\n-# (Also known as ', ', '.join(repr(alias) for alias in obj.aliases), ')' ])
-                #embed.add_field(name='Also known as', value=', '.join(obj.aliases))
+                text.extend(['Also known as: ', ', '.join(obj.aliases), ])
             await ctx.respond(''.join(text))
+            #embed.add_field(name='See also', value=', '.join(obj.links))
+            #embed.add_field(name='Also known as', value=', '.join(obj.aliases))
             #await ctx.respond(embed=embed)
         except KeyError as e:
             logging.info(f'{ctx.command}: No glossary term {term}', exc_info=e)

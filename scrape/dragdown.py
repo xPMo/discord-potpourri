@@ -245,7 +245,6 @@ def build_topics(pages):
         # [ ] dynamically resolve templates
         while nodes:
             node = nodes.popleft()
-
             match node:
                 case mw.nodes.Heading():
                     level = node.level
@@ -369,12 +368,12 @@ def resolve_node_generic(node, nodes: collections.deque, parts: list, pagetitle=
                         push(node.params[1].value.nodes)
                 case 'term' | 'Term':
                     parts.append(None)
-                    link = BASEURL + node.params[0].value.strip() + 'Glossary#' + node.params[1].value.strip()
+                    link = BASEURL + node.params[0].value.strip() + 'Glossary#' + node.params[0].value.strip()
                     push([finish_link(re.sub(r'(?=[\(\)\\])', r'\\', link.replace(' ', '_')))])
                     try:
-                        push(node.params[2].value.nodes)
-                    except:
                         push(node.params[1].value.nodes)
+                    except:
+                        push(node.params[0].value.nodes)
 
                 case 'tt':
                     nodes.appendleft(')')
@@ -534,23 +533,28 @@ class Character:
         if hasattr(self, '_framedata'):
             return self._framedata
         self._framedata = {}
-        data = mw.parse(self.data).ifilter_templates(matches=lambda node: node.name.startswith("FrameData"))
-        for code in data:
-            hitbox = {}
-            for param in code.params:
+        modedata = mw.parse(self.data).ifilter_templates(matches=lambda node: node.name.startswith("RoA2-MoveMode"))
+        hitdata = mw.parse(self.data).ifilter_templates(matches=lambda node: node.name.startswith("RoA2-HitData"))
+        for move in modedata:
+            mode_dict = {}
+            for param in move.params:
                 name  = param.name.strip()
-                if name == 'images':
-                    hitbox['images'] = [BASEURL + 'Special:Redirect/file/' + x.strip() for x in str(param.value).split('\\')]
+                if name == 'image':
+                    mode_dict['images'] = [BASEURL + 'Special:Redirect/file/' + x.strip() for x in str(param.value).split('\\')]
                     continue
-                hitbox[param.name.strip()] = nodes_to_text(param.value.nodes).strip()
-
-            if 'caption' in hitbox:
-                hitbox['caption'] = [x.strip() for x in re.split(r'\s\\\\\s', hitbox['caption'])]
-
-            if hitbox['attack'] not in self._framedata:
-                self._framedata[hitbox['attack']] = {hitbox['name']: hitbox}
+                mode_dict[param.name.strip()] = nodes_to_text(param.value.nodes).strip()
+            if mode_dict['attack'] not in self._framedata:
+                self._framedata[mode_dict['attack']] = {mode_dict.get('mode') or mode_dict['attack']: mode_dict}
             else:
-                self._framedata[hitbox['attack']][hitbox['name']] = hitbox
+                self._framedata[mode_dict['attack']][mode_dict.get('mode') or mode_dict['attack']] = mode_dict
+        # Keep hitdata separate, perform lookup
+        self.hitdata = {}
+        for hit in hitdata:
+            hitbox = {}
+            for param in hit.params:
+                name  = param.name.strip()
+                hitbox[param.name.strip()] = nodes_to_text(param.value.nodes).strip()
+            self.hitdata[(hitbox['moveID'], hitbox['nameID'])] = hitbox
         return self._framedata
 
     @property
@@ -634,7 +638,8 @@ def emotelist(wiki=Wiki()):
 
 if __name__ == '__main__':
     import json
-    with Wiki() as wiki:
+    with Wiki(user_agent='Python/Dragdown bot (Testing)') as wiki:
         char = Character(wiki, 'RoA2/Maypul')
-        print(char.topics['Techniques - Wrap'])
-
+        # print(char.topics.keys())
+        print(char.framedata.keys())
+        print(char.framedata['Jab'].keys())
