@@ -209,7 +209,11 @@ class Cog(discord.Cog):
                 pass
 
             if 'caption' in data:
-                embed.set_footer(text=' / '.join(data['caption']), icon_url = c.icon_url if hasattr(c, 'icon_url') else None)
+                if isinstance(data['caption'], str):
+                    caption = data['caption']
+                else:
+                    caption = ' / '.join(data['caption'])
+                embed.set_footer(text=caption, icon_url = c.icon_url if hasattr(c, 'icon_url') else None)
             if not 'images' in data:
                 await ctx.respond(None, embed=embed)
             else:
